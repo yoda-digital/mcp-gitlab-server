@@ -60,6 +60,7 @@ const GITLAB_PERSONAL_ACCESS_TOKEN = process.env.GITLAB_PERSONAL_ACCESS_TOKEN;
 const GITLAB_API_URL = process.env.GITLAB_API_URL || 'https://gitlab.com/api/v4';
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const USE_SSE = process.env.USE_SSE === 'true';
+const GITLAB_READ_ONLY_MODE = process.env.GITLAB_READ_ONLY_MODE === 'true';
 
 if (!GITLAB_PERSONAL_ACCESS_TOKEN) {
   console.error("GITLAB_PERSONAL_ACCESS_TOKEN environment variable is not set");
@@ -97,154 +98,194 @@ function createJsonSchema(schema: z.ZodType<any>) {
   };
 }
 
+// Define all available tools with their descriptions and schemas
+const ALL_TOOLS = [
+  {
+    name: "create_or_update_file",
+    description: "Create or update a single file in a GitLab project",
+    inputSchema: createJsonSchema(CreateOrUpdateFileSchema),
+    readOnly: false
+  },
+  {
+    name: "search_repositories",
+    description: "Search for GitLab projects",
+    inputSchema: createJsonSchema(SearchRepositoriesSchema),
+    readOnly: true
+  },
+  {
+    name: "create_repository",
+    description: "Create a new GitLab project",
+    inputSchema: createJsonSchema(CreateRepositorySchema),
+    readOnly: false
+  },
+  {
+    name: "get_file_contents",
+    description: "Get the contents of a file or directory from a GitLab project",
+    inputSchema: createJsonSchema(GetFileContentsSchema),
+    readOnly: true
+  },
+  {
+    name: "push_files",
+    description: "Push multiple files to a GitLab project in a single commit",
+    inputSchema: createJsonSchema(PushFilesSchema),
+    readOnly: false
+  },
+  {
+    name: "create_issue",
+    description: "Create a new issue in a GitLab project",
+    inputSchema: createJsonSchema(CreateIssueSchema),
+    readOnly: false
+  },
+  {
+    name: "create_merge_request",
+    description: "Create a new merge request in a GitLab project",
+    inputSchema: createJsonSchema(CreateMergeRequestSchema),
+    readOnly: false
+  },
+  {
+    name: "fork_repository",
+    description: "Fork a GitLab project to your account or specified namespace",
+    inputSchema: createJsonSchema(ForkRepositorySchema),
+    readOnly: false
+  },
+  {
+    name: "create_branch",
+    description: "Create a new branch in a GitLab project",
+    inputSchema: createJsonSchema(CreateBranchSchema),
+    readOnly: false
+  },
+  {
+    name: "list_group_projects",
+    description: "List all projects (repositories) within a specific GitLab group",
+    inputSchema: createJsonSchema(ListGroupProjectsSchema),
+    readOnly: true
+  },
+  {
+    name: "get_project_events",
+    description: "Get recent events/activities for a GitLab project",
+    inputSchema: createJsonSchema(GetProjectEventsSchema),
+    readOnly: true
+  },
+  {
+    name: "list_commits",
+    description: "Get commit history for a GitLab project",
+    inputSchema: createJsonSchema(ListCommitsSchema),
+    readOnly: true
+  },
+  {
+    name: "list_issues",
+    description: "Get issues for a GitLab project",
+    inputSchema: createJsonSchema(ListIssuesSchema),
+    readOnly: true
+  },
+  {
+    name: "list_merge_requests",
+    description: "Get merge requests for a GitLab project",
+    inputSchema: createJsonSchema(ListMergeRequestsSchema),
+    readOnly: true
+  },
+  // Project Wiki Tools
+  {
+    name: "list_project_wiki_pages",
+    description: "List all wiki pages for a GitLab project",
+    inputSchema: createJsonSchema(ListProjectWikiPagesSchema),
+    readOnly: true
+  },
+  {
+    name: "get_project_wiki_page",
+    description: "Get a specific wiki page for a GitLab project",
+    inputSchema: createJsonSchema(GetProjectWikiPageSchema),
+    readOnly: true
+  },
+  {
+    name: "create_project_wiki_page",
+    description: "Create a new wiki page for a GitLab project",
+    inputSchema: createJsonSchema(CreateProjectWikiPageSchema),
+    readOnly: false
+  },
+  {
+    name: "edit_project_wiki_page",
+    description: "Edit an existing wiki page for a GitLab project",
+    inputSchema: createJsonSchema(EditProjectWikiPageSchema),
+    readOnly: false
+  },
+  {
+    name: "delete_project_wiki_page",
+    description: "Delete a wiki page from a GitLab project",
+    inputSchema: createJsonSchema(DeleteProjectWikiPageSchema),
+    readOnly: false
+  },
+  {
+    name: "upload_project_wiki_attachment",
+    description: "Upload an attachment to a GitLab project wiki",
+    inputSchema: createJsonSchema(UploadProjectWikiAttachmentSchema),
+    readOnly: false
+  },
+  // Group Wiki Tools
+  {
+    name: "list_group_wiki_pages",
+    description: "List all wiki pages for a GitLab group",
+    inputSchema: createJsonSchema(ListGroupWikiPagesSchema),
+    readOnly: true
+  },
+  {
+    name: "get_group_wiki_page",
+    description: "Get a specific wiki page for a GitLab group",
+    inputSchema: createJsonSchema(GetGroupWikiPageSchema),
+    readOnly: true
+  },
+  {
+    name: "create_group_wiki_page",
+    description: "Create a new wiki page for a GitLab group",
+    inputSchema: createJsonSchema(CreateGroupWikiPageSchema),
+    readOnly: false
+  },
+  {
+    name: "edit_group_wiki_page",
+    description: "Edit an existing wiki page for a GitLab group",
+    inputSchema: createJsonSchema(EditGroupWikiPageSchema),
+    readOnly: false
+  },
+  {
+    name: "delete_group_wiki_page",
+    description: "Delete a wiki page from a GitLab group",
+    inputSchema: createJsonSchema(DeleteGroupWikiPageSchema),
+    readOnly: false
+  },
+  {
+    name: "upload_group_wiki_attachment",
+    description: "Upload an attachment to a GitLab group wiki",
+    inputSchema: createJsonSchema(UploadGroupWikiAttachmentSchema),
+    readOnly: false
+  },
+  // Member Tools
+  {
+    name: "list_project_members",
+    description: "List all members of a GitLab project (including inherited members)",
+    inputSchema: createJsonSchema(ListProjectMembersSchema),
+    readOnly: true
+  },
+  {
+    name: "list_group_members",
+    description: "List all members of a GitLab group (including inherited members)",
+    inputSchema: createJsonSchema(ListGroupMembersSchema),
+    readOnly: true
+  },
+];
+
 // Register tool handlers
 server.setRequestHandler(ListToolsRequestSchema, async (): Promise<ListToolsResult> => {
+  if (GITLAB_READ_ONLY_MODE) {
+    console.log("Server running in read-only mode, exposing only read operations");
+    return {
+      tools: ALL_TOOLS
+        .filter(tool => tool.readOnly)
+        .map(({ name, description, inputSchema }) => ({ name, description, inputSchema }))
+    };
+  }
+
   return {
-    tools: [
-      {
-        name: "create_or_update_file",
-        description: "Create or update a single file in a GitLab project",
-        inputSchema: createJsonSchema(CreateOrUpdateFileSchema)
-      },
-      {
-        name: "search_repositories",
-        description: "Search for GitLab projects",
-        inputSchema: createJsonSchema(SearchRepositoriesSchema)
-      },
-      {
-        name: "create_repository",
-        description: "Create a new GitLab project",
-        inputSchema: createJsonSchema(CreateRepositorySchema)
-      },
-      {
-        name: "get_file_contents",
-        description: "Get the contents of a file or directory from a GitLab project",
-        inputSchema: createJsonSchema(GetFileContentsSchema)
-      },
-      {
-        name: "push_files",
-        description: "Push multiple files to a GitLab project in a single commit",
-        inputSchema: createJsonSchema(PushFilesSchema)
-      },
-      {
-        name: "create_issue",
-        description: "Create a new issue in a GitLab project",
-        inputSchema: createJsonSchema(CreateIssueSchema)
-      },
-      {
-        name: "create_merge_request",
-        description: "Create a new merge request in a GitLab project",
-        inputSchema: createJsonSchema(CreateMergeRequestSchema)
-      },
-      {
-        name: "fork_repository",
-        description: "Fork a GitLab project to your account or specified namespace",
-        inputSchema: createJsonSchema(ForkRepositorySchema)
-      },
-      {
-        name: "create_branch",
-        description: "Create a new branch in a GitLab project",
-        inputSchema: createJsonSchema(CreateBranchSchema)
-      },
-      {
-        name: "list_group_projects",
-        description: "List all projects (repositories) within a specific GitLab group",
-        inputSchema: createJsonSchema(ListGroupProjectsSchema)
-      },
-      {
-        name: "get_project_events",
-        description: "Get recent events/activities for a GitLab project",
-        inputSchema: createJsonSchema(GetProjectEventsSchema)
-      },
-      {
-        name: "list_commits",
-        description: "Get commit history for a GitLab project",
-        inputSchema: createJsonSchema(ListCommitsSchema)
-      },
-      {
-        name: "list_issues",
-        description: "Get issues for a GitLab project",
-        inputSchema: createJsonSchema(ListIssuesSchema)
-      },
-      {
-        name: "list_merge_requests",
-        description: "Get merge requests for a GitLab project",
-        inputSchema: createJsonSchema(ListMergeRequestsSchema)
-      },
-      // Project Wiki Tools
-      {
-        name: "list_project_wiki_pages",
-        description: "List all wiki pages for a GitLab project",
-        inputSchema: createJsonSchema(ListProjectWikiPagesSchema)
-      },
-      {
-        name: "get_project_wiki_page",
-        description: "Get a specific wiki page for a GitLab project",
-        inputSchema: createJsonSchema(GetProjectWikiPageSchema)
-      },
-      {
-        name: "create_project_wiki_page",
-        description: "Create a new wiki page for a GitLab project",
-        inputSchema: createJsonSchema(CreateProjectWikiPageSchema)
-      },
-      {
-        name: "edit_project_wiki_page",
-        description: "Edit an existing wiki page for a GitLab project",
-        inputSchema: createJsonSchema(EditProjectWikiPageSchema)
-      },
-      {
-        name: "delete_project_wiki_page",
-        description: "Delete a wiki page from a GitLab project",
-        inputSchema: createJsonSchema(DeleteProjectWikiPageSchema)
-      },
-      {
-        name: "upload_project_wiki_attachment",
-        description: "Upload an attachment to a GitLab project wiki",
-        inputSchema: createJsonSchema(UploadProjectWikiAttachmentSchema)
-      },
-      // Group Wiki Tools
-      {
-        name: "list_group_wiki_pages",
-        description: "List all wiki pages for a GitLab group",
-        inputSchema: createJsonSchema(ListGroupWikiPagesSchema)
-      },
-      {
-        name: "get_group_wiki_page",
-        description: "Get a specific wiki page for a GitLab group",
-        inputSchema: createJsonSchema(GetGroupWikiPageSchema)
-      },
-      {
-        name: "create_group_wiki_page",
-        description: "Create a new wiki page for a GitLab group",
-        inputSchema: createJsonSchema(CreateGroupWikiPageSchema)
-      },
-      {
-        name: "edit_group_wiki_page",
-        description: "Edit an existing wiki page for a GitLab group",
-        inputSchema: createJsonSchema(EditGroupWikiPageSchema)
-      },
-      {
-        name: "delete_group_wiki_page",
-        description: "Delete a wiki page from a GitLab group",
-        inputSchema: createJsonSchema(DeleteGroupWikiPageSchema)
-      },
-      {
-        name: "upload_group_wiki_attachment",
-        description: "Upload an attachment to a GitLab group wiki",
-        inputSchema: createJsonSchema(UploadGroupWikiAttachmentSchema)
-      },
-      // Member Tools
-      {
-        name: "list_project_members",
-        description: "List all members of a GitLab project (including inherited members)",
-        inputSchema: createJsonSchema(ListProjectMembersSchema)
-      },
-      {
-        name: "list_group_members",
-        description: "List all members of a GitLab group (including inherited members)",
-        inputSchema: createJsonSchema(ListGroupMembersSchema)
-      },
-    ]
+    tools: ALL_TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema }))
   };
 });
 
@@ -252,6 +293,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
   try {
     if (!request.params.arguments) {
       throw new Error("Arguments are required");
+    }
+
+    // Check if tool is available in read-only mode
+    if (GITLAB_READ_ONLY_MODE) {
+      const tool = ALL_TOOLS.find(t => t.name === request.params.name);
+      if (!tool || !tool.readOnly) {
+        throw new Error(`Tool '${request.params.name}' is not available in read-only mode`);
+      }
     }
 
     switch (request.params.name) {

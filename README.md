@@ -76,12 +76,33 @@ npm run build
 
 The server requires the following environment variables:
 
-| Variable                       | Required | Default                     | Description                        |
-| ------------------------------ | -------- | --------------------------- | ---------------------------------- |
-| `GITLAB_PERSONAL_ACCESS_TOKEN` | Yes      | -                           | Your GitLab personal access token  |
-| `GITLAB_API_URL`               | No       | `https://gitlab.com/api/v4` | GitLab API URL                     |
-| `PORT`                         | No       | `3000`                      | Port for SSE transport             |
-| `USE_SSE`                      | No       | `false`                     | Set to 'true' to use SSE transport |
+| Variable                       | Required | Default                     | Description                                        |
+| ------------------------------ | -------- | --------------------------- | -------------------------------------------------- |
+| `GITLAB_PERSONAL_ACCESS_TOKEN` | Yes      | -                           | Your GitLab personal access token                  |
+| `GITLAB_API_URL`               | No       | `https://gitlab.com/api/v4` | GitLab API URL                                     |
+| `PORT`                         | No       | `3000`                      | Port for SSE transport                             |
+| `USE_SSE`                      | No       | `false`                     | Set to 'true' to use SSE transport                 |
+| `GITLAB_READ_ONLY_MODE`        | No       | `false`                     | Set to 'true' to enable read-only mode (see below) |
+
+#### Read-Only Mode
+
+When `GITLAB_READ_ONLY_MODE` is set to `true`, the server will only expose read operations. This is useful for client applications that shouldn't have write access to your GitLab resources. In read-only mode, the following tools will be available:
+
+- `search_repositories`
+- `get_file_contents`
+- `list_group_projects`
+- `get_project_events`
+- `list_commits`
+- `list_issues`
+- `list_merge_requests`
+- `list_project_wiki_pages`
+- `get_project_wiki_page`
+- `list_group_wiki_pages`
+- `get_group_wiki_page`
+- `list_project_members`
+- `list_group_members`
+
+Any attempt to use write operations (create, update, delete) will result in an error when in read-only mode.
 
 #### MCP Settings Configuration
 
@@ -96,6 +117,26 @@ Add the GitLab MCP server to your MCP settings file:
       "env": {
         "GITLAB_PERSONAL_ACCESS_TOKEN": "your_token_here",
         "GITLAB_API_URL": "https://gitlab.com/api/v4"
+      },
+      "alwaysAllow": [],
+      "disabled": false
+    }
+  }
+}
+```
+
+For read-only mode, add the `GITLAB_READ_ONLY_MODE` environment variable:
+
+```json
+{
+  "mcpServers": {
+    "gitlab-readonly": {
+      "command": "npx",
+      "args": ["-y", "@yoda.digital/gitlab-mcp-server"],
+      "env": {
+        "GITLAB_PERSONAL_ACCESS_TOKEN": "your_token_here",
+        "GITLAB_API_URL": "https://gitlab.com/api/v4",
+        "GITLAB_READ_ONLY_MODE": "true"
       },
       "alwaysAllow": [],
       "disabled": false
@@ -121,6 +162,7 @@ npm start
 ```bash
 # Set your GitLab personal access token and enable SSE
 export GITLAB_PERSONAL_ACCESS_TOKEN=your_token_here
+export GITLAB_READ_ONLY_MODE=false
 export USE_SSE=true
 export PORT=3000  # Optional, defaults to 3000
 
