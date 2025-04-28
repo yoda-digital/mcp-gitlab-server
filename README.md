@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/mseep-audited.png)](https://mseep.ai/app/yoda-digital-mcp-gitlab-server)
+
 # GitLab MCP Server
 
 <p align="center">
