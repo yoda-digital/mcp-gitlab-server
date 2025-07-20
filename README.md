@@ -30,6 +30,7 @@
 - **Consistent Response Formatting** - Standardized pagination and response structures
 - **Strong TypeScript Typing** - Built with the MCP SDK for type safety
 - **Complete Documentation** - Examples for all available tools
+- **CI/CD Pipeline Integration** - Validate and trigger pipelines with job insights
 
 ### 🔍 Supported Operations
 
@@ -38,6 +39,7 @@
 - **Branch Operations** - Create and manage branches
 - **Issue Tracking** - Create, list, filter issues
 - **Merge Requests** - Create, list, review merge requests
+- **CI/CD Pipelines** - Validate configs, trigger runs, inspect jobs
 - **Group Management** - List group projects and members
 - **Project Activity** - Track events and commit history
 - **Wiki Management** - Full support for project and group wikis with attachments
@@ -558,6 +560,83 @@ GITLAB_PERSONAL_ACCESS_TOKEN=your_token_here npx @dangerusslee/gitlab-mcp-server
 
 </details>
 
+### Pipeline Operations
+
+<details>
+<summary><b>validate_pipeline</b>: Lint a `.gitlab-ci.yml` configuration</summary>
+
+```json
+{
+  "project_id": "username/project",
+  "content": "CI configuration as YAML"
+}
+```
+
+</details>
+
+<details>
+<summary><b>trigger_pipeline</b>: Run a pipeline for a branch or tag</summary>
+
+```json
+{
+  "project_id": "username/project",
+  "ref": "main",
+  "variables": {
+    "KEY": "value"
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><b>get_pipeline</b>: Get pipeline details by ID</summary>
+
+```json
+{
+  "project_id": "username/project",
+  "pipeline_id": 123
+}
+```
+
+</details>
+
+<details>
+<summary><b>list_pipeline_jobs</b>: List jobs for a pipeline</summary>
+
+```json
+{
+  "project_id": "username/project",
+  "pipeline_id": 123
+}
+```
+
+</details>
+
+<details>
+<summary><b>get_job</b>: Get details of a single job</summary>
+
+```json
+{
+  "project_id": "username/project",
+  "job_id": 456
+}
+```
+
+</details>
+
+<details>
+<summary><b>get_job_log</b>: Retrieve raw log output for a job</summary>
+
+```json
+{
+  "project_id": "username/project",
+  "job_id": 456
+}
+```
+
+</details>
+
 ### Member Operations
 
 <details>
@@ -842,7 +921,7 @@ For more detailed documentation, please visit our [documentation site](https://y
 
 ## 📊 Roadmap
 
-- [ ] GitLab CI/CD Integration
+- [x] GitLab CI/CD Integration
 - [ ] Advanced Project Analytics
 - [ ] Comprehensive Test Suite
 - [ ] Support for GitLab GraphQL API
