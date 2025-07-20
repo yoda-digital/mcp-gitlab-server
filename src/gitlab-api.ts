@@ -53,6 +53,22 @@ import {
   type GitLabNotesResponse,
   GitLabDiscussionsResponseSchema,
   type GitLabDiscussionsResponse,
+  GitLabPipelineSchema,
+  GitLabJobSchema,
+  GitLabPipelinesResponseSchema,
+  GitLabJobsResponseSchema,
+  ListPipelinesSchema,
+  GetPipelineSchema,
+  GetPipelineJobsSchema,
+  GetJobSchema,
+  GetJobLogSchema,
+  CreatePipelineSchema,
+  RetryPipelineSchema,
+  CancelPipelineSchema,
+  RetryJobSchema,
+  CancelJobSchema,
+  ListProjectsSchema,
+  GetProjectSchema,
 } from './schemas.js';
 
 /**
@@ -1581,5 +1597,300 @@ export class GitLabApi {
       count: totalCount,
       items: discussions,
     });
+  }
+
+  /**
+   * Lists pipelines for a GitLab project.
+   */
+  async listPipelines(
+    projectId: string,
+    options: z.infer<typeof ListPipelinesSchema> & { project_id?: string } = {}
+  ): Promise<GitLabPipelinesResponse> {
+    const { status, ref, page, per_page } = options;
+    const url = new URL(
+      `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/pipelines`
+    );
+    if (status) url.searchParams.append('status', status);
+    if (ref) url.searchParams.append('ref', ref);
+    if (page) url.searchParams.append('page', page.toString());
+    if (per_page) url.searchParams.append('per_page', per_page.toString());
+
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${this.token}` }
+    });
+
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab API error: ${response.statusText}`
+      );
+    }
+
+    const data = await response.json();
+    const totalCount = parseInt(response.headers.get('X-Total') || '0');
+    return GitLabPipelinesResponseSchema.parse({
+      count: totalCount,
+      items: data
+    });
+  }
+
+  /** Get details of a specific pipeline */
+  async getPipeline(
+    projectId: string,
+    pipelineId: number
+  ): Promise<GitLabPipeline> {
+    const response = await fetch(
+      `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/pipelines/${pipelineId}`,
+      {
+        headers: { Authorization: `Bearer ${this.token}` }
+      }
+    );
+
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab API error: ${response.statusText}`
+      );
+    }
+
+    return GitLabPipelineSchema.parse(await response.json());
+  }
+
+  /** List jobs in a specific pipeline */
+  async getPipelineJobs(
+    projectId: string,
+    pipelineId: number,
+    scope?: string[]
+  ): Promise<GitLabJobsResponse> {
+    const url = new URL(
+      `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/pipelines/${pipelineId}/jobs`
+    );
+    if (scope && scope.length > 0) {
+      scope.forEach(s => url.searchParams.append('scope[]', s));
+    }
+
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${this.token}` }
+    });
+
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab API error: ${response.statusText}`
+      );
+    }
+
+    const data = await response.json();
+    const totalCount = parseInt(response.headers.get('X-Total') || '0');
+    return GitLabJobsResponseSchema.parse({
+      count: totalCount,
+      items: data
+    });
+  }
+
+  /** Get job details */
+  async getJob(
+    projectId: string,
+    jobId: number
+  ): Promise<GitLabJob> {
+    const response = await fetch(
+      `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/jobs/${jobId}`,
+      { headers: { Authorization: `Bearer ${this.token}` } }
+    );
+
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab API error: ${response.statusText}`
+      );
+    }
+
+    return GitLabJobSchema.parse(await response.json());
+  }
+
+  /** Get job log */
+  async getJobLog(
+    projectId: string,
+    jobId: number
+  ): Promise<string> {
+    const response = await fetch(
+      `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/jobs/${jobId}/trace`,
+      { headers: { Authorization: `Bearer ${this.token}` } }
+    );
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab API error: ${response.statusText}`
+      );
+    }
+    return await response.text();
+  }
+
+  /** Create a new pipeline */
+  async createPipeline(
+    projectId: string,
+    ref: string,
+    variables: Record<string, string> = {}
+  ): Promise<GitLabPipeline> {
+    const body: Record<string, unknown> = { ref };
+    if (Object.keys(variables).length > 0) {
+      body.variables = Object.entries(variables).map(([key, value]) => ({
+        key,
+        value
+      }));
+    }
+    const response = await fetch(
+      `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/pipeline`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      }
+    );
+
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab API error: ${response.statusText}`
+      );
+    }
+
+    return GitLabPipelineSchema.parse(await response.json());
+  }
+
+  /** Retry a failed pipeline */
+  async retryPipeline(
+    projectId: string,
+    pipelineId: number
+  ): Promise<GitLabPipeline> {
+    const response = await fetch(
+      `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/pipelines/${pipelineId}/retry`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.token}` }
+      }
+    );
+
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab API error: ${response.statusText}`
+      );
+    }
+
+    return GitLabPipelineSchema.parse(await response.json());
+  }
+
+  /** Cancel a running pipeline */
+  async cancelPipeline(
+    projectId: string,
+    pipelineId: number
+  ): Promise<GitLabPipeline> {
+    const response = await fetch(
+      `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/pipelines/${pipelineId}/cancel`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.token}` }
+      }
+    );
+
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab API error: ${response.statusText}`
+      );
+    }
+
+    return GitLabPipelineSchema.parse(await response.json());
+  }
+
+  /** Retry a job */
+  async retryJob(
+    projectId: string,
+    jobId: number
+  ): Promise<GitLabJob> {
+    const response = await fetch(
+      `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/jobs/${jobId}/retry`,
+      { method: 'POST', headers: { Authorization: `Bearer ${this.token}` } }
+    );
+
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab API error: ${response.statusText}`
+      );
+    }
+
+    return GitLabJobSchema.parse(await response.json());
+  }
+
+  /** Cancel a job */
+  async cancelJob(
+    projectId: string,
+    jobId: number
+  ): Promise<GitLabJob> {
+    const response = await fetch(
+      `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/jobs/${jobId}/cancel`,
+      { method: 'POST', headers: { Authorization: `Bearer ${this.token}` } }
+    );
+
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab API error: ${response.statusText}`
+      );
+    }
+
+    return GitLabJobSchema.parse(await response.json());
+  }
+
+  /** List GitLab projects */
+  async listProjects(
+    options: z.infer<typeof ListProjectsSchema> = {}
+  ): Promise<GitLabSearchResponse> {
+    const url = new URL(`${this.apiUrl}/projects`);
+    const { search, visibility, page, per_page } = options;
+    if (search) url.searchParams.append('search', search);
+    if (visibility) url.searchParams.append('visibility', visibility);
+    if (page) url.searchParams.append('page', page.toString());
+    if (per_page) url.searchParams.append('per_page', per_page.toString());
+
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${this.token}` }
+    });
+
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab API error: ${response.statusText}`
+      );
+    }
+
+    const projects = await response.json();
+    const totalCount = parseInt(response.headers.get('X-Total') || '0');
+    return GitLabSearchResponseSchema.parse({
+      count: totalCount,
+      items: projects
+    });
+  }
+
+  /** Get project details */
+  async getProject(projectId: string): Promise<GitLabRepository> {
+    const response = await fetch(
+      `${this.apiUrl}/projects/${encodeURIComponent(projectId)}`,
+      { headers: { Authorization: `Bearer ${this.token}` } }
+    );
+
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab API error: ${response.statusText}`
+      );
+    }
+
+    return GitLabRepositorySchema.parse(await response.json());
   }
 }

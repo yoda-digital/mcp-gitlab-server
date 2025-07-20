@@ -43,6 +43,18 @@ import {
   FileOperationSchema,
   ListIssueNotesSchema,
   ListIssueDiscussionsSchema,
+  ListPipelinesSchema,
+  GetPipelineSchema,
+  GetPipelineJobsSchema,
+  GetJobSchema,
+  GetJobLogSchema,
+  CreatePipelineSchema,
+  RetryPipelineSchema,
+  CancelPipelineSchema,
+  RetryJobSchema,
+  CancelJobSchema,
+  ListProjectsSchema,
+  GetProjectSchema,
 } from './schemas.js';
 import { GitLabApi } from './gitlab-api.js';
 import { setupTransport } from './transport.js';
@@ -287,6 +299,80 @@ const ALL_TOOLS = [
     name: "list_issue_discussions",
     description: "Fetch all discussions (threaded comments) for a GitLab issue",
     inputSchema: createJsonSchema(ListIssueDiscussionsSchema),
+    readOnly: true
+  },
+  // Pipeline Tools
+  {
+    name: "list_pipelines",
+    description: "List pipelines for a GitLab project",
+    inputSchema: createJsonSchema(ListPipelinesSchema),
+    readOnly: true
+  },
+  {
+    name: "get_pipeline",
+    description: "Get details of a specific pipeline",
+    inputSchema: createJsonSchema(GetPipelineSchema),
+    readOnly: true
+  },
+  {
+    name: "get_pipeline_jobs",
+    description: "List jobs in a specific pipeline",
+    inputSchema: createJsonSchema(GetPipelineJobsSchema),
+    readOnly: true
+  },
+  {
+    name: "get_job",
+    description: "Get details of a specific job",
+    inputSchema: createJsonSchema(GetJobSchema),
+    readOnly: true
+  },
+  {
+    name: "get_job_log",
+    description: "Get job execution log/trace",
+    inputSchema: createJsonSchema(GetJobLogSchema),
+    readOnly: true
+  },
+  {
+    name: "create_pipeline",
+    description: "Create a new pipeline",
+    inputSchema: createJsonSchema(CreatePipelineSchema),
+    readOnly: false
+  },
+  {
+    name: "retry_pipeline",
+    description: "Retry a failed pipeline",
+    inputSchema: createJsonSchema(RetryPipelineSchema),
+    readOnly: false
+  },
+  {
+    name: "cancel_pipeline",
+    description: "Cancel a running pipeline",
+    inputSchema: createJsonSchema(CancelPipelineSchema),
+    readOnly: false
+  },
+  {
+    name: "retry_job",
+    description: "Retry a specific job",
+    inputSchema: createJsonSchema(RetryJobSchema),
+    readOnly: false
+  },
+  {
+    name: "cancel_job",
+    description: "Cancel a running job",
+    inputSchema: createJsonSchema(CancelJobSchema),
+    readOnly: false
+  },
+  // Project Management Tools
+  {
+    name: "list_projects",
+    description: "List GitLab projects",
+    inputSchema: createJsonSchema(ListProjectsSchema),
+    readOnly: true
+  },
+  {
+    name: "get_project",
+    description: "Get project details",
+    inputSchema: createJsonSchema(GetProjectSchema),
     readOnly: true
   },
 ];
@@ -738,6 +824,81 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
 
         // Format and return the response
         return formatDiscussionsResponse(discussions);
+      }
+
+      case "list_pipelines": {
+        const args = ListPipelinesSchema.parse(request.params.arguments);
+        const { project_id, ...opts } = args;
+        const pipelines = await gitlabApi.listPipelines(project_id, opts);
+        return { content: [{ type: "text", text: JSON.stringify(pipelines, null, 2) }] };
+      }
+
+      case "get_pipeline": {
+        const args = GetPipelineSchema.parse(request.params.arguments);
+        const pipeline = await gitlabApi.getPipeline(args.project_id, Number(args.pipeline_id));
+        return { content: [{ type: "text", text: JSON.stringify(pipeline, null, 2) }] };
+      }
+
+      case "get_pipeline_jobs": {
+        const args = GetPipelineJobsSchema.parse(request.params.arguments);
+        const { project_id, pipeline_id, scope } = args;
+        const jobs = await gitlabApi.getPipelineJobs(project_id, Number(pipeline_id), scope);
+        return { content: [{ type: "text", text: JSON.stringify(jobs, null, 2) }] };
+      }
+
+      case "get_job": {
+        const args = GetJobSchema.parse(request.params.arguments);
+        const job = await gitlabApi.getJob(args.project_id, Number(args.job_id));
+        return { content: [{ type: "text", text: JSON.stringify(job, null, 2) }] };
+      }
+
+      case "get_job_log": {
+        const args = GetJobLogSchema.parse(request.params.arguments);
+        const log = await gitlabApi.getJobLog(args.project_id, Number(args.job_id));
+        return { content: [{ type: "text", text: log }] };
+      }
+
+      case "create_pipeline": {
+        const args = CreatePipelineSchema.parse(request.params.arguments);
+        const { project_id, ref, variables } = args;
+        const pipeline = await gitlabApi.createPipeline(project_id, ref, variables || {});
+        return { content: [{ type: "text", text: JSON.stringify(pipeline, null, 2) }] };
+      }
+
+      case "retry_pipeline": {
+        const args = RetryPipelineSchema.parse(request.params.arguments);
+        const pipeline = await gitlabApi.retryPipeline(args.project_id, Number(args.pipeline_id));
+        return { content: [{ type: "text", text: JSON.stringify(pipeline, null, 2) }] };
+      }
+
+      case "cancel_pipeline": {
+        const args = CancelPipelineSchema.parse(request.params.arguments);
+        const pipeline = await gitlabApi.cancelPipeline(args.project_id, Number(args.pipeline_id));
+        return { content: [{ type: "text", text: JSON.stringify(pipeline, null, 2) }] };
+      }
+
+      case "retry_job": {
+        const args = RetryJobSchema.parse(request.params.arguments);
+        const job = await gitlabApi.retryJob(args.project_id, Number(args.job_id));
+        return { content: [{ type: "text", text: JSON.stringify(job, null, 2) }] };
+      }
+
+      case "cancel_job": {
+        const args = CancelJobSchema.parse(request.params.arguments);
+        const job = await gitlabApi.cancelJob(args.project_id, Number(args.job_id));
+        return { content: [{ type: "text", text: JSON.stringify(job, null, 2) }] };
+      }
+
+      case "list_projects": {
+        const args = ListProjectsSchema.parse(request.params.arguments);
+        const projects = await gitlabApi.listProjects(args);
+        return { content: [{ type: "text", text: JSON.stringify(projects, null, 2) }] };
+      }
+
+      case "get_project": {
+        const args = GetProjectSchema.parse(request.params.arguments);
+        const project = await gitlabApi.getProject(args.project_id);
+        return { content: [{ type: "text", text: JSON.stringify(project, null, 2) }] };
       }
 
       default:
