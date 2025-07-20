@@ -55,6 +55,7 @@ import {
   CancelJobSchema,
   ListProjectsSchema,
   GetProjectSchema,
+  ValidateCIYamlSchema,
 } from './schemas.js';
 import { GitLabApi } from './gitlab-api.js';
 import { setupTransport } from './transport.js';
@@ -373,6 +374,12 @@ const ALL_TOOLS = [
     name: "get_project",
     description: "Get project details",
     inputSchema: createJsonSchema(GetProjectSchema),
+    readOnly: true
+  },
+  {
+    name: "validate_ci_yaml",
+    description: "Validate GitLab CI YAML configuration using GitLab's lint API",
+    inputSchema: createJsonSchema(ValidateCIYamlSchema),
     readOnly: true
   },
 ];
@@ -899,6 +906,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const args = GetProjectSchema.parse(request.params.arguments);
         const project = await gitlabApi.getProject(args.project_id);
         return { content: [{ type: "text", text: JSON.stringify(project, null, 2) }] };
+      }
+
+      case "validate_ci_yaml": {
+        const args = ValidateCIYamlSchema.parse(request.params.arguments);
+        const result = await gitlabApi.validateCIYaml(
+          args.project_id,
+          args.content,
+          args.include_merged_yaml
+        );
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       default:

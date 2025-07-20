@@ -1,0 +1,131 @@
+# GitLab CI/CD Configuration for MCP GitLab Server
+# Using proper YAML anchors to avoid syntax errors
+
+# Define reusable configurations using YAML anchors
+.node_template: &node_template
+  image: node:18-alpine
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - node_modules/
+    policy: pull-push
+  before_script:
+    - npm ci --prefer-offline --no-audit
+
+.artifacts_template: &artifacts_template
+  artifacts:
+    reports:
+      junit: junit.xml
+    paths:
+      - dist/
+      - coverage/
+    expire_in: 1 week
+    when: always
+
+# Define stages
+stages:
+  - build
+  - test
+  - validate
+  - package
+
+# Variables
+variables:
+  NODE_ENV: "test"
+  FORCE_COLOR: "1"
+
+# Build stage
+build:
+  <<: *node_template
+  stage: build
+  script:
+    - echo "Building MCP GitLab Server..."
+    - npm run build
+    - echo "Build completed successfully"
+  <<: *artifacts_template
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# Test stage
+test:
+  <<: *node_template
+  stage: test
+  script:
+    - echo "Running tests for MCP GitLab Server..."
+    - npm run test
+    - echo "Tests completed successfully"
+  coverage: '/Coverage: \d+\.\d+%/'
+  <<: *artifacts_template
+  dependencies:
+    - build
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# Validation stage
+validate:
+  <<: *node_template
+  stage: validate
+  script:
+    - echo "Validating MCP GitLab Server configuration..."
+    - npm run validate
+    - echo "Validation completed successfully"
+  dependencies:
+    - build
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# Package stage
+package:
+  <<: *node_template
+  stage: package
+  script:
+    - echo "Packaging MCP GitLab Server..."
+    - npm pack
+    - echo "Package created successfully"
+  artifacts:
+    paths:
+      - "*.tgz"
+    expire_in: 1 month
+  dependencies:
+    - build
+    - test
+    - validate
+  only:
+    - main
+    - tags
+
+# Optional: Lint check (can be added as a separate job)
+lint:
+  <<: *node_template
+  stage: test
+  script:
+    - echo "Running linter..."
+    - npx tsc --noEmit
+    - echo "Linting completed successfully"
+  allow_failure: true
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# Security audit (optional)
+security:
+  <<: *node_template
+  stage: validate
+  script:
+    - echo "Running security audit..."
+    - npm audit --audit-level=moderate
+    - echo "Security audit completed"
+  allow_failure: true
+  only:
+    - main
+    - develop
+    - merge_requests

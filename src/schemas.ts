@@ -744,3 +744,21 @@ export const ListProjectsSchema = z.object({
 export const GetProjectSchema = z.object({
   project_id: z.string()
 });
+
+// CI Lint Response Interface
+export const CILintResponseSchema = z.object({
+  valid: z.boolean(),
+  errors: z.array(z.string()),
+  warnings: z.array(z.string()),
+  merged_yaml: z.string(),
+  includes: z.array(z.any()).optional()
+});
+
+export type CILintResponse = z.infer<typeof CILintResponseSchema>;
+
+// Validate CI YAML Schema
+export const ValidateCIYamlSchema = z.object({
+  project_id: z.string(),
+  content: z.string().optional(),
+  include_merged_yaml: z.boolean().optional()
+});

@@ -1,77 +1,43 @@
-Yes, the @dangerusslee/gitlab-mcp-server package has several usability issues that need fixing:
+High Priority Implementation:
 
-Issues Found:
+1. ✅ API endpoint verified working with GITLAB_PERSONAL_ACCESS_TOKEN
+2. Implement mcp**gitlab**validate_ci_yaml function
+   mcp**gitlab**validate_ci_yaml(project_id: string, content?: string): Promise<CILintResponse>
+3. Add POST /api/v4/projects/:id/ci/lint API call
 
-1. ❌ Binary path is incorrect - package.json points to dist/index.js but file is at dist/src/index.js
-2. ❌ No environment variable validation - Server starts but doesn't provide tools without GitLab token
-3. ❌ Missing executable permissions - Binary isn't properly executable via npx
-4. ❌ No help/usage information - No way to see what tools are available
-5. ❌ Silent failures - MCP server runs but provides no resources when misconfigured
+   - Endpoint: POST https://gitlab.com/api/v4/projects/${project_id}/ci/lint
+   - Headers: {"Content-Type": "application/json", "Authorization": "Bearer ${GITLAB_PERSONAL_ACCESS_TOKEN}"}
+   - Body: {"content": yaml_content}
 
-Prompt for Codex to Fix the Package:
+4. Handle authentication with GITLAB_PERSONAL_ACCESS_TOKEN
 
-Fix the GitLab MCP server package (@dangerusslee/gitlab-mcp-server) to improve usability and reliability:
+   - Use environment variable: process.env.GITLAB_PERSONAL_ACCESS_TOKEN
+   - Add error handling for missing token
 
-CRITICAL FIXES NEEDED:
+5. Fix YAML anchor reference issue causing script validation errors
 
-1. **Fix Binary Path in package.json:**
+   - The current .gitlab-ci.yml has YAML anchor syntax errors in the script sections
 
-   - Current: "gitlab-mcp-server": "./dist/index.js"
-   - Should be: "gitlab-mcp-server": "./dist/src/index.js"
-   - OR move the main entry point to dist/index.js and import from src/
+Implementation Details:
 
-2. **Add Environment Variable Validation:**
+API Call Pattern:
+curl -X POST "https://gitlab.com/api/v4/projects/71771195/ci/lint" \
+ -H "Content-Type: application/json" \
+ -H "Authorization: Bearer ${GITLAB_PERSONAL_ACCESS_TOKEN}" \
+ --data '{"content": "yaml_content_here"}'
 
-   - Check for GITLAB_PERSONAL_ACCESS_TOKEN on startup
-   - Provide clear error messages if missing required env vars
-   - Add --help flag to show required environment variables
-   - Add --validate flag to test configuration without starting server
+Expected Response Format:
+interface CILintResponse {
+valid: boolean;
+errors: string[];
+warnings: string[];
+merged_yaml: string;
+includes?: any[];
+}
 
-3. **Improve Error Handling:**
-
-   - Add proper error messages when GitLab API is unreachable
-   - Validate GitLab token permissions on startup
-   - Show clear error if project_id format is invalid
-
-4. **Add Usage Information:**
-
-   - Implement --help flag showing:
-     - Required environment variables
-     - Available MCP tools list
-     - Usage examples
-   - Add --version flag
-   - Add --list-tools flag to show available operations
-
-5. **Fix Build Process:**
-
-   - Ensure dist/index.js exists and properly imports from src/
-   - Add shebang (#!/usr/bin/env node) to binary entry point
-   - Ensure executable permissions in build step
-
-6. **Improve Configuration:**
-
-   - Support .env file loading
-   - Add configuration validation on startup
-   - Provide sample configuration file
-
-7. **Better Documentation:**
-
-   - Add troubleshooting section to README
-   - Include configuration validation steps
-   - Add examples for common use cases
-
-8. **MCP Integration:**
-   - Ensure tools are properly exposed when server starts
-   - Add resource listing capability
-   - Improve tool descriptions and parameter validation
-
-TARGET BEHAVIOR:
-
-- `npx @dangerusslee/gitlab-mcp-server --help` should work
-- `npx @dangerusslee/gitlab-mcp-server --validate` should test config
-- Server should fail fast with clear errors if misconfigured
-- MCP tools should be immediately available when properly configured
-
-Please fix these issues while maintaining all existing functionality.
-
-This will make the package much more user-friendly and eliminate the configuration issues we encountered.
+Function Parameters:
+{
+project_id: string, // Required: "71771195" or "testing7075939/ami-rhel9-gold"
+content?: string, // Optional: YAML content (auto-read from .gitlab-ci.yml if not provided)
+include_merged_yaml?: boolean // Optional: include merged YAML in response
+}

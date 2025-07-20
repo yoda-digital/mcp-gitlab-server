@@ -30,7 +30,7 @@
 - **Consistent Response Formatting** - Standardized pagination and response structures
 - **Strong TypeScript Typing** - Built with the MCP SDK for type safety
 - **Complete Documentation** - Examples for all available tools
-- **CI/CD Pipeline Integration** - Validate and trigger pipelines with job insights
+- **CI/CD Pipeline Integration** - Validate CI YAML configurations and trigger pipelines with job insights
 
 ### 🔍 Supported Operations
 
@@ -39,7 +39,7 @@
 - **Branch Operations** - Create and manage branches
 - **Issue Tracking** - Create, list, filter issues
 - **Merge Requests** - Create, list, review merge requests
-- **CI/CD Pipelines** - Validate configs, trigger runs, inspect jobs
+- **CI/CD Pipelines** - Validate CI YAML configurations, trigger runs, inspect jobs
 - **Group Management** - List group projects and members
 - **Project Activity** - Track events and commit history
 - **Wiki Management** - Full support for project and group wikis with attachments
@@ -563,13 +563,64 @@ GITLAB_PERSONAL_ACCESS_TOKEN=your_token_here npx @dangerusslee/gitlab-mcp-server
 ### Pipeline Operations
 
 <details>
-<summary><b>validate_pipeline</b>: Lint a `.gitlab-ci.yml` configuration</summary>
+<summary><b>validate_ci_yaml</b>: Validate GitLab CI YAML configuration using GitLab's lint API</summary>
 
 ```json
 {
   "project_id": "username/project",
-  "content": "CI configuration as YAML"
+  "content": "CI configuration as YAML",
+  "include_merged_yaml": true
 }
+```
+
+**Parameters:**
+- `project_id` (required): Project identifier (e.g., "71771195" or "username/project")
+- `content` (optional): YAML content to validate. If not provided, reads `.gitlab-ci.yml` from the project's main branch
+- `include_merged_yaml` (optional): Whether to include the merged YAML in the response. Defaults to `true`
+
+**Response Format:**
+```json
+{
+  "valid": true,
+  "errors": [],
+  "warnings": ["Warning message if any"],
+  "merged_yaml": "stages:\n  - build\n  - test\n...",
+  "includes": []
+}
+```
+
+**Usage Examples:**
+
+1. **Validate existing project CI configuration:**
+```json
+{
+  "project_id": "71771195"
+}
+```
+
+2. **Validate custom YAML content:**
+```json
+{
+  "project_id": "username/project",
+  "content": "stages:\n  - build\n  - test\n\nbuild_job:\n  stage: build\n  script:\n    - echo 'Building...'\n",
+  "include_merged_yaml": false
+}
+```
+
+3. **Validate with merged YAML output:**
+```json
+{
+  "project_id": "testing7075939/ami-rhel9-gold",
+  "include_merged_yaml": true
+}
+```
+
+**API Call Pattern:**
+```bash
+curl -X POST "https://gitlab.com/api/v4/projects/{project_id}/ci/lint" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${GITLAB_PERSONAL_ACCESS_TOKEN}" \
+  --data '{"content": "yaml_content_here", "include_merged_yaml": true}'
 ```
 
 </details>
@@ -928,6 +979,7 @@ For more detailed documentation, please visit our [documentation site](https://y
 ## 📊 Roadmap
 
 - [x] GitLab CI/CD Integration
+- [x] CI YAML Validation with GitLab Lint API
 - [ ] Advanced Project Analytics
 - [x] Comprehensive Test Suite
 - [ ] Support for GitLab GraphQL API

@@ -73,6 +73,8 @@ import {
   CancelJobSchema,
   ListProjectsSchema,
   GetProjectSchema,
+  CILintResponseSchema,
+  type CILintResponse,
 } from './schemas.js';
 
 /**
@@ -1896,5 +1898,60 @@ export class GitLabApi {
     }
 
     return GitLabRepositorySchema.parse(await response.json());
+  }
+
+  /** Validate CI YAML configuration */
+  async validateCIYaml(
+    projectId: string,
+    content?: string,
+    includeMergedYaml: boolean = true
+  ): Promise<CILintResponse> {
+    let yamlContent = content;
+    
+    // If no content provided, try to read .gitlab-ci.yml from the project
+    if (!yamlContent) {
+      try {
+        const ciFile = await this.getFileContents(projectId, '.gitlab-ci.yml', 'main');
+        yamlContent = atob(ciFile.content); // Base64 decode the content
+      } catch (error) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `No content provided and could not read .gitlab-ci.yml from project: ${error}`
+        );
+      }
+    }
+
+    const response = await fetch(
+      `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/ci/lint`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`
+        },
+        body: JSON.stringify({
+          content: yamlContent,
+          include_merged_yaml: includeMergedYaml
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new McpError(
+        ErrorCode.InternalError,
+        `GitLab CI lint API error: ${response.statusText}`
+      );
+    }
+
+    const data = await response.json() as any;
+    
+    // Transform the response to match our interface
+    return CILintResponseSchema.parse({
+      valid: data.status === 'valid',
+      errors: data.errors || [],
+      warnings: data.warnings || [],
+      merged_yaml: data.merged_yaml || '',
+      includes: data.includes
+    });
   }
 }
