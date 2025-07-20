@@ -1,6 +1,6 @@
 {
   "name": "@dangerusslee/gitlab-mcp-server",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "description": "GitLab MCP Server - A Model Context Protocol server for GitLab integration",
   "main": "dist/index.js",
   "type": "module",
