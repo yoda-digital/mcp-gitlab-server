@@ -48,12 +48,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yoda-digital/mcp-gitlab-server.git"
+    "url": "git+https://github.com/dangerusslee/mcp-gitlab-server.git"
   },
   "bugs": {
-    "url": "https://github.com/yoda-digital/mcp-gitlab-server/issues"
+    "url": "https://github.com/dangerusslee/mcp-gitlab-server/issues"
   },
-  "homepage": "https://github.com/yoda-digital/mcp-gitlab-server#readme",
+  "homepage": "https://github.com/dangerusslee/mcp-gitlab-server#readme",
   "publishConfig": {
     "access": "public"
   }
