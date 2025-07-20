@@ -895,6 +895,12 @@ npm run build
 npm test
 ```
 
+### Utility Functions
+
+Helper utilities simplify working with the GitLab API. `isValidISODate`
+validates ISO 8601 strings, while formatting helpers like
+`formatEventsResponse` convert raw responses into concise output.
+
 ### Code Style and Linting
 
 ```bash
@@ -923,7 +929,7 @@ For more detailed documentation, please visit our [documentation site](https://y
 
 - [x] GitLab CI/CD Integration
 - [ ] Advanced Project Analytics
-- [ ] Comprehensive Test Suite
+- [x] Comprehensive Test Suite
 - [ ] Support for GitLab GraphQL API
 - [ ] Extended Webhook Support
 
