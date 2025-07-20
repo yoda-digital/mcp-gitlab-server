@@ -648,3 +648,99 @@ export const ListIssueDiscussionsSchema = z.object({
   page: z.number().optional(),
   per_page: z.number().optional(),
 });
+// Pipeline Schemas and Tool Inputs
+// Pipeline Schemas and Tool Inputs
+
+export const GitLabPipelineSchema = z.object({
+  id: z.number(),
+  status: z.string(),
+  ref: z.string(),
+  sha: z.string(),
+  web_url: z.string()
+});
+
+export type GitLabPipeline = z.infer<typeof GitLabPipelineSchema>;
+
+export const GitLabJobSchema = z.object({
+  id: z.number(),
+  status: z.string(),
+  stage: z.string().optional(),
+  name: z.string().optional(),
+  ref: z.string().optional(),
+  created_at: z.string().optional(),
+  started_at: z.string().nullable().optional(),
+  finished_at: z.string().nullable().optional(),
+  duration: z.number().nullable().optional(),
+  web_url: z.string().optional()
+});
+
+export type GitLabJob = z.infer<typeof GitLabJobSchema>;
+
+export const GitLabPipelinesResponseSchema = z.object({
+  count: z.number(),
+  items: z.array(GitLabPipelineSchema)
+});
+export type GitLabPipelinesResponse = z.infer<typeof GitLabPipelinesResponseSchema>;
+
+export const GitLabJobsResponseSchema = z.object({
+  count: z.number(),
+  items: z.array(GitLabJobSchema)
+});
+export type GitLabJobsResponse = z.infer<typeof GitLabJobsResponseSchema>;
+
+export const ListPipelinesSchema = z.object({
+  project_id: z.string(),
+  status: z.enum(['running', 'pending', 'success', 'failed', 'canceled', 'skipped', 'created', 'manual']).optional(),
+  ref: z.string().optional(),
+  page: z.number().optional(),
+  per_page: z.number().optional()
+});
+
+export const GetPipelineSchema = z.object({
+  project_id: z.string(),
+  pipeline_id: z.union([z.number(), z.string()])
+});
+
+export const GetPipelineJobsSchema = z.object({
+  project_id: z.string(),
+  pipeline_id: z.union([z.number(), z.string()]),
+  scope: z.array(z.string()).optional()
+});
+
+export const GetJobSchema = z.object({
+  project_id: z.string(),
+  job_id: z.union([z.number(), z.string()])
+});
+
+export const GetJobLogSchema = GetJobSchema;
+
+export const CreatePipelineSchema = z.object({
+  project_id: z.string(),
+  ref: z.string(),
+  variables: z.record(z.string()).optional()
+});
+
+export const RetryPipelineSchema = z.object({
+  project_id: z.string(),
+  pipeline_id: z.union([z.number(), z.string()])
+});
+
+export const CancelPipelineSchema = RetryPipelineSchema;
+
+export const RetryJobSchema = z.object({
+  project_id: z.string(),
+  job_id: z.union([z.number(), z.string()])
+});
+
+export const CancelJobSchema = RetryJobSchema;
+
+export const ListProjectsSchema = z.object({
+  search: z.string().optional(),
+  visibility: z.enum(['public', 'internal', 'private']).optional(),
+  page: z.number().optional(),
+  per_page: z.number().optional()
+});
+
+export const GetProjectSchema = z.object({
+  project_id: z.string()
+});
