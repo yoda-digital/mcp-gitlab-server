@@ -30,15 +30,18 @@ jobs:
     if: ${{ !contains(github.event.head_commit.message, 'update changelog [skip ci]') }}
     needs: build-and-test
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
           node-version: "20.x"
           registry-url: "https://registry.npmjs.org/"
-          scope: "@yoda.digital"
+          scope: "@dangerusslee"
       - run: npm ci
       - run: npm run build
-      - run: npm publish
+      - run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
