@@ -1,18 +1,21 @@
 {
   "name": "@dangerusslee/gitlab-mcp-server",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "description": "GitLab MCP Server - A Model Context Protocol server for GitLab integration",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc && chmod +x dist/src/*.js",
-    "start": "node dist/index.js",
+    "build": "tsc && chmod +x dist/src/cli.js dist/src/index.js",
+    "start": "node dist/src/cli.js",
     "dev": "ts-node --esm src/index.ts",
     "prepare": "npm run build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "validate": "node dist/src/cli.js --validate",
+    "help": "node dist/src/cli.js --help",
+    "list-tools": "node dist/src/cli.js --list-tools"
   },
   "bin": {
-    "gitlab-mcp-server": "./dist/index.js"
+    "gitlab-mcp-server": "./dist/src/cli.js"
   },
   "keywords": [
     "gitlab",
@@ -32,6 +35,9 @@
     "node-fetch": "^3.3.2",
     "zod": "^3.22.4",
     "zod-to-json-schema": "^3.22.3"
+  },
+  "optionalDependencies": {
+    "dotenv": "^16.6.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
