@@ -8,14 +8,14 @@
   <a href="https://www.npmjs.com/package/@dangerusslee/gitlab-mcp-server">
     <img alt="npm" src="https://img.shields.io/npm/v/@dangerusslee/gitlab-mcp-server?color=blue">
   </a>
-  <a href="https://github.com/yoda-digital/mcp-gitlab-server/blob/main/LICENSE">
+  <a href="https://github.com/dangerusslee/mcp-gitlab-server/blob/main/LICENSE">
     <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
   </a>
-  <a href="https://github.com/yoda-digital/mcp-gitlab-server/issues">
-    <img alt="GitHub issues" src="https://img.shields.io/github/issues/yoda-digital/mcp-gitlab-server">
+  <a href="https://github.com/dangerusslee/mcp-gitlab-server/issues">
+    <img alt="GitHub issues" src="https://img.shields.io/github/issues/dangerusslee/mcp-gitlab-server">
   </a>
-  <a href="https://github.com/yoda-digital/mcp-gitlab-server/stargazers">
-    <img alt="GitHub stars" src="https://img.shields.io/github/stars/yoda-digital/mcp-gitlab-server">
+  <a href="https://github.com/dangerusslee/mcp-gitlab-server/stargazers">
+    <img alt="GitHub stars" src="https://img.shields.io/github/stars/dangerusslee/mcp-gitlab-server">
   </a>
 </p>
 
@@ -57,7 +57,7 @@ npm install @dangerusslee/gitlab-mcp-server
 
 ```bash
 # Clone the repository
-git clone https://github.com/yoda-digital/mcp-gitlab-server.git
+git clone https://github.com/dangerusslee/mcp-gitlab-server.git
 cd mcp-gitlab-server
 
 # Install dependencies
@@ -868,8 +868,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 Thanks to all the contributors who have helped improve this project:
 
-<a href="https://github.com/yoda-digital/mcp-gitlab-server/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=yoda-digital/mcp-gitlab-server" />
+<a href="https://github.com/dangerusslee/mcp-gitlab-server/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=dangerusslee/mcp-gitlab-server" />
 </a>
 
 Special thanks to:
