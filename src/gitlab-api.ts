@@ -53,6 +53,10 @@ import {
   type GitLabNotesResponse,
   GitLabDiscussionsResponseSchema,
   type GitLabDiscussionsResponse,
+  type GitLabPipeline,
+  type GitLabJob,
+  type GitLabPipelinesResponse,
+  type GitLabJobsResponse,
   GitLabPipelineSchema,
   GitLabJobSchema,
   GitLabPipelinesResponseSchema,
@@ -1604,7 +1608,7 @@ export class GitLabApi {
    */
   async listPipelines(
     projectId: string,
-    options: z.infer<typeof ListPipelinesSchema> & { project_id?: string } = {}
+    options: Omit<z.infer<typeof ListPipelinesSchema>, 'project_id'> = {}
   ): Promise<GitLabPipelinesResponse> {
     const { status, ref, page, per_page } = options;
     const url = new URL(
