@@ -79,7 +79,7 @@ const serverCapabilities: ServerCapabilities = {
 
 // Create server
 const server = new Server({
-  name: "gitlab-mcp-server",
+  name: "@dangerusslee/gitlab-mcp-server",
   version: packageJson.version,
 }, {
   capabilities: serverCapabilities

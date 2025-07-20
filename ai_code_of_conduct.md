@@ -72,7 +72,7 @@ Each rule follows this structure:
 - Changes are successfully pushed to the main branch
 - GitHub Actions workflow completes successfully (check Actions tab in repository)
 - Package is successfully published to npm registry (verify in npm registry)
-- Package can be installed with `npm install @yoda.digital/gitlab-mcp-server@[new-version]`
+- Package can be installed with `npm install @dangerusslee/gitlab-mcp-server@[new-version]`
 
 #### RULE_EXCEPTIONS:
 
