@@ -43,6 +43,72 @@ import {
   FileOperationSchema,
   ListIssueNotesSchema,
   ListIssueDiscussionsSchema,
+  ApproveMergeRequestSchema,
+  UnapproveMergeRequestSchema,
+  MergeMergeRequestSchema,
+  SetAutoMergeSchema,
+  CancelAutoMergeSchema,
+  ListMergeRequestNotesSchema,
+  CreateMergeRequestNoteSchema,
+  UpdateMergeRequestNoteSchema,
+  ListMergeRequestDiscussionsSchema,
+  // CI/CD Schemas
+  ListPipelinesSchema,
+  GetPipelineSchema,
+  TriggerPipelineSchema,
+  RetryPipelineSchema,
+  CancelPipelineSchema,
+  ListPipelineJobsSchema,
+  GetJobSchema,
+  GetJobLogSchema,
+  RetryJobSchema,
+  CancelJobSchema,
+  ListEnvironmentsSchema,
+  GetEnvironmentSchema,
+  // Repository Schemas
+  ListBranchesSchema,
+  DeleteBranchSchema,
+  CompareBranchesSchema,
+  ListTagsSchema,
+  CreateTagSchema,
+  GetRepositoryTreeSchema,
+  ListReleasesSchema,
+  CreateReleaseSchema,
+  // Issue Enhancement Schemas
+  UpdateIssueSchema,
+  CreateIssueNoteSchema,
+  // Label Schemas
+  ListLabelsSchema,
+  CreateLabelSchema,
+  UpdateLabelSchema,
+  // Milestone Schemas
+  ListMilestonesSchema,
+  CreateMilestoneSchema,
+  UpdateMilestoneSchema,
+  // MR Enhancement Schemas
+  GetMergeRequestChangesSchema,
+  GetMergeRequestCommitsSchema,
+  UpdateMergeRequestSchema,
+  RebaseMergeRequestSchema,
+  CreateMergeRequestDiscussionSchema,
+  // Protected Branch Schemas
+  ListProtectedBranchesSchema,
+  ProtectBranchSchema,
+  UnprotectBranchSchema,
+  // Project Schemas
+  GetProjectSchema,
+  UpdateProjectSchema,
+  // User Schemas
+  GetCurrentUserSchema,
+  ListUsersSchema,
+  GetUserSchema,
+  // Group Schemas
+  ListGroupsSchema,
+  GetGroupSchema,
+  ListGroupSubgroupsSchema,
+  CreateGroupSchema,
+  UpdateGroupSchema,
+  DeleteGroupSchema,
 } from './schemas.js';
 import { GitLabApi } from './gitlab-api.js';
 import { setupTransport } from './transport.js';
@@ -56,7 +122,19 @@ import {
   formatWikiAttachmentResponse,
   formatMembersResponse,
   formatNotesResponse,
-  formatDiscussionsResponse
+  formatDiscussionsResponse,
+  formatPipelinesResponse,
+  formatJobsResponse,
+  formatEnvironmentsResponse,
+  formatBranchesResponse,
+  formatTagsResponse,
+  formatTreeResponse,
+  formatReleasesResponse,
+  formatLabelsResponse,
+  formatMilestonesResponse,
+  formatProtectedBranchesResponse,
+  formatUsersResponse,
+  formatGroupsResponse
 } from './formatters.js';
 import { isValidISODate } from './utils.js';
 
@@ -288,6 +366,359 @@ const ALL_TOOLS = [
     description: "Fetch all discussions (threaded comments) for a GitLab issue",
     inputSchema: createJsonSchema(ListIssueDiscussionsSchema),
     readOnly: true
+  },
+  // Merge Request Action Tools
+  {
+    name: "approve_merge_request",
+    description: "Approve a merge request",
+    inputSchema: createJsonSchema(ApproveMergeRequestSchema),
+    readOnly: false
+  },
+  {
+    name: "unapprove_merge_request",
+    description: "Remove your approval from a merge request",
+    inputSchema: createJsonSchema(UnapproveMergeRequestSchema),
+    readOnly: false
+  },
+  {
+    name: "merge_merge_request",
+    description: "Merge a merge request",
+    inputSchema: createJsonSchema(MergeMergeRequestSchema),
+    readOnly: false
+  },
+  {
+    name: "set_auto_merge",
+    description: "Set a merge request to merge when pipeline succeeds (auto-merge)",
+    inputSchema: createJsonSchema(SetAutoMergeSchema),
+    readOnly: false
+  },
+  {
+    name: "cancel_auto_merge",
+    description: "Cancel auto-merge for a merge request",
+    inputSchema: createJsonSchema(CancelAutoMergeSchema),
+    readOnly: false
+  },
+  // Merge Request Notes Tools
+  {
+    name: "list_merge_request_notes",
+    description: "List all comments and notes on a merge request",
+    inputSchema: createJsonSchema(ListMergeRequestNotesSchema),
+    readOnly: true
+  },
+  {
+    name: "create_merge_request_note",
+    description: "Add a comment to a merge request",
+    inputSchema: createJsonSchema(CreateMergeRequestNoteSchema),
+    readOnly: false
+  },
+  {
+    name: "update_merge_request_note",
+    description: "Edit a comment on a merge request",
+    inputSchema: createJsonSchema(UpdateMergeRequestNoteSchema),
+    readOnly: false
+  },
+  {
+    name: "list_merge_request_discussions",
+    description: "List all discussions (threaded comments) on a merge request",
+    inputSchema: createJsonSchema(ListMergeRequestDiscussionsSchema),
+    readOnly: true
+  },
+  // CI/CD: Pipelines
+  {
+    name: "list_pipelines",
+    description: "List pipelines for a GitLab project",
+    inputSchema: createJsonSchema(ListPipelinesSchema),
+    readOnly: true
+  },
+  {
+    name: "get_pipeline",
+    description: "Get details of a specific pipeline",
+    inputSchema: createJsonSchema(GetPipelineSchema),
+    readOnly: true
+  },
+  {
+    name: "trigger_pipeline",
+    description: "Trigger a new pipeline for a branch or tag",
+    inputSchema: createJsonSchema(TriggerPipelineSchema),
+    readOnly: false
+  },
+  {
+    name: "retry_pipeline",
+    description: "Retry failed jobs in a pipeline",
+    inputSchema: createJsonSchema(RetryPipelineSchema),
+    readOnly: false
+  },
+  {
+    name: "cancel_pipeline",
+    description: "Cancel a running pipeline",
+    inputSchema: createJsonSchema(CancelPipelineSchema),
+    readOnly: false
+  },
+  // CI/CD: Jobs
+  {
+    name: "list_pipeline_jobs",
+    description: "List jobs for a specific pipeline",
+    inputSchema: createJsonSchema(ListPipelineJobsSchema),
+    readOnly: true
+  },
+  {
+    name: "get_job",
+    description: "Get details of a specific job",
+    inputSchema: createJsonSchema(GetJobSchema),
+    readOnly: true
+  },
+  {
+    name: "get_job_log",
+    description: "Get the log/trace output of a job",
+    inputSchema: createJsonSchema(GetJobLogSchema),
+    readOnly: true
+  },
+  {
+    name: "retry_job",
+    description: "Retry a failed job",
+    inputSchema: createJsonSchema(RetryJobSchema),
+    readOnly: false
+  },
+  {
+    name: "cancel_job",
+    description: "Cancel a running job",
+    inputSchema: createJsonSchema(CancelJobSchema),
+    readOnly: false
+  },
+  // CI/CD: Environments
+  {
+    name: "list_environments",
+    description: "List environments for a GitLab project",
+    inputSchema: createJsonSchema(ListEnvironmentsSchema),
+    readOnly: true
+  },
+  {
+    name: "get_environment",
+    description: "Get details of a specific environment",
+    inputSchema: createJsonSchema(GetEnvironmentSchema),
+    readOnly: true
+  },
+  // Repository: Branches
+  {
+    name: "list_branches",
+    description: "List branches for a GitLab project",
+    inputSchema: createJsonSchema(ListBranchesSchema),
+    readOnly: true
+  },
+  {
+    name: "delete_branch",
+    description: "Delete a branch from a GitLab project",
+    inputSchema: createJsonSchema(DeleteBranchSchema),
+    readOnly: false
+  },
+  {
+    name: "compare_branches",
+    description: "Compare two branches, tags, or commits",
+    inputSchema: createJsonSchema(CompareBranchesSchema),
+    readOnly: true
+  },
+  // Repository: Tags
+  {
+    name: "list_tags",
+    description: "List tags for a GitLab project",
+    inputSchema: createJsonSchema(ListTagsSchema),
+    readOnly: true
+  },
+  {
+    name: "create_tag",
+    description: "Create a new tag in a GitLab project",
+    inputSchema: createJsonSchema(CreateTagSchema),
+    readOnly: false
+  },
+  // Repository: Tree
+  {
+    name: "get_repository_tree",
+    description: "Get the repository file tree",
+    inputSchema: createJsonSchema(GetRepositoryTreeSchema),
+    readOnly: true
+  },
+  // Repository: Releases
+  {
+    name: "list_releases",
+    description: "List releases for a GitLab project",
+    inputSchema: createJsonSchema(ListReleasesSchema),
+    readOnly: true
+  },
+  {
+    name: "create_release",
+    description: "Create a new release for a GitLab project",
+    inputSchema: createJsonSchema(CreateReleaseSchema),
+    readOnly: false
+  },
+  // Issues: Update & Notes
+  {
+    name: "update_issue",
+    description: "Update an existing issue",
+    inputSchema: createJsonSchema(UpdateIssueSchema),
+    readOnly: false
+  },
+  {
+    name: "create_issue_note",
+    description: "Add a comment to an issue",
+    inputSchema: createJsonSchema(CreateIssueNoteSchema),
+    readOnly: false
+  },
+  // Labels
+  {
+    name: "list_labels",
+    description: "List labels for a GitLab project",
+    inputSchema: createJsonSchema(ListLabelsSchema),
+    readOnly: true
+  },
+  {
+    name: "create_label",
+    description: "Create a new label in a GitLab project",
+    inputSchema: createJsonSchema(CreateLabelSchema),
+    readOnly: false
+  },
+  {
+    name: "update_label",
+    description: "Update an existing label",
+    inputSchema: createJsonSchema(UpdateLabelSchema),
+    readOnly: false
+  },
+  // Milestones
+  {
+    name: "list_milestones",
+    description: "List milestones for a GitLab project",
+    inputSchema: createJsonSchema(ListMilestonesSchema),
+    readOnly: true
+  },
+  {
+    name: "create_milestone",
+    description: "Create a new milestone in a GitLab project",
+    inputSchema: createJsonSchema(CreateMilestoneSchema),
+    readOnly: false
+  },
+  {
+    name: "update_milestone",
+    description: "Update an existing milestone",
+    inputSchema: createJsonSchema(UpdateMilestoneSchema),
+    readOnly: false
+  },
+  // MR Enhancements
+  {
+    name: "get_merge_request_changes",
+    description: "Get the changes/diffs for a merge request",
+    inputSchema: createJsonSchema(GetMergeRequestChangesSchema),
+    readOnly: true
+  },
+  {
+    name: "get_merge_request_commits",
+    description: "Get the commits for a merge request",
+    inputSchema: createJsonSchema(GetMergeRequestCommitsSchema),
+    readOnly: true
+  },
+  {
+    name: "update_merge_request",
+    description: "Update an existing merge request",
+    inputSchema: createJsonSchema(UpdateMergeRequestSchema),
+    readOnly: false
+  },
+  {
+    name: "rebase_merge_request",
+    description: "Rebase a merge request onto the target branch",
+    inputSchema: createJsonSchema(RebaseMergeRequestSchema),
+    readOnly: false
+  },
+  {
+    name: "create_merge_request_discussion",
+    description: "Create a new discussion on a merge request",
+    inputSchema: createJsonSchema(CreateMergeRequestDiscussionSchema),
+    readOnly: false
+  },
+  // Protected Branches
+  {
+    name: "list_protected_branches",
+    description: "List protected branches for a GitLab project",
+    inputSchema: createJsonSchema(ListProtectedBranchesSchema),
+    readOnly: true
+  },
+  {
+    name: "protect_branch",
+    description: "Protect a branch in a GitLab project",
+    inputSchema: createJsonSchema(ProtectBranchSchema),
+    readOnly: false
+  },
+  {
+    name: "unprotect_branch",
+    description: "Remove protection from a branch",
+    inputSchema: createJsonSchema(UnprotectBranchSchema),
+    readOnly: false
+  },
+  // Projects
+  {
+    name: "get_project",
+    description: "Get details of a GitLab project",
+    inputSchema: createJsonSchema(GetProjectSchema),
+    readOnly: true
+  },
+  {
+    name: "update_project",
+    description: "Update a GitLab project's settings",
+    inputSchema: createJsonSchema(UpdateProjectSchema),
+    readOnly: false
+  },
+  // Users
+  {
+    name: "get_current_user",
+    description: "Get details of the currently authenticated user",
+    inputSchema: createJsonSchema(GetCurrentUserSchema),
+    readOnly: true
+  },
+  {
+    name: "list_users",
+    description: "List GitLab users",
+    inputSchema: createJsonSchema(ListUsersSchema),
+    readOnly: true
+  },
+  {
+    name: "get_user",
+    description: "Get details of a specific user",
+    inputSchema: createJsonSchema(GetUserSchema),
+    readOnly: true
+  },
+  // Groups
+  {
+    name: "list_groups",
+    description: "List GitLab groups",
+    inputSchema: createJsonSchema(ListGroupsSchema),
+    readOnly: true
+  },
+  {
+    name: "get_group",
+    description: "Get details of a specific group",
+    inputSchema: createJsonSchema(GetGroupSchema),
+    readOnly: true
+  },
+  {
+    name: "list_group_subgroups",
+    description: "List subgroups of a group",
+    inputSchema: createJsonSchema(ListGroupSubgroupsSchema),
+    readOnly: true
+  },
+  {
+    name: "create_group",
+    description: "Create a new GitLab group",
+    inputSchema: createJsonSchema(CreateGroupSchema),
+    readOnly: false
+  },
+  {
+    name: "update_group",
+    description: "Update a GitLab group's settings",
+    inputSchema: createJsonSchema(UpdateGroupSchema),
+    readOnly: false
+  },
+  {
+    name: "delete_group",
+    description: "Delete a GitLab group",
+    inputSchema: createJsonSchema(DeleteGroupSchema),
+    readOnly: false
   },
 ];
 
@@ -738,6 +1169,658 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
 
         // Format and return the response
         return formatDiscussionsResponse(discussions);
+      }
+
+      // Merge Request Action Tools
+      case "approve_merge_request": {
+        const args = ApproveMergeRequestSchema.parse(request.params.arguments);
+        const mergeRequest = await gitlabApi.approveMergeRequest(
+          args.project_id,
+          args.merge_request_iid,
+          args.sha
+        );
+        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+      }
+
+      case "unapprove_merge_request": {
+        const args = UnapproveMergeRequestSchema.parse(request.params.arguments);
+        const mergeRequest = await gitlabApi.unapproveMergeRequest(
+          args.project_id,
+          args.merge_request_iid
+        );
+        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+      }
+
+      case "merge_merge_request": {
+        const args = MergeMergeRequestSchema.parse(request.params.arguments);
+        const { project_id, merge_request_iid, ...options } = args;
+        const mergeRequest = await gitlabApi.mergeMergeRequest(
+          project_id,
+          merge_request_iid,
+          options
+        );
+        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+      }
+
+      case "set_auto_merge": {
+        const args = SetAutoMergeSchema.parse(request.params.arguments);
+        const { project_id, merge_request_iid, ...options } = args;
+        const mergeRequest = await gitlabApi.setAutoMerge(
+          project_id,
+          merge_request_iid,
+          options
+        );
+        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+      }
+
+      case "cancel_auto_merge": {
+        const args = CancelAutoMergeSchema.parse(request.params.arguments);
+        const mergeRequest = await gitlabApi.cancelAutoMerge(
+          args.project_id,
+          args.merge_request_iid
+        );
+        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+      }
+
+      // Merge Request Notes Tools
+      case "list_merge_request_notes": {
+        const args = ListMergeRequestNotesSchema.parse(request.params.arguments);
+
+        // Additional validation for pagination parameters
+        if (args.per_page && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const notes = await gitlabApi.getMergeRequestNotes(
+          args.project_id,
+          args.merge_request_iid,
+          {
+            sort: args.sort,
+            order_by: args.order_by,
+            page: args.page,
+            per_page: args.per_page
+          }
+        );
+
+        return formatNotesResponse(notes);
+      }
+
+      case "create_merge_request_note": {
+        const args = CreateMergeRequestNoteSchema.parse(request.params.arguments);
+        const note = await gitlabApi.createMergeRequestNote(
+          args.project_id,
+          args.merge_request_iid,
+          args.body,
+          args.internal
+        );
+        return { content: [{ type: "text", text: JSON.stringify(note, null, 2) }] };
+      }
+
+      case "update_merge_request_note": {
+        const args = UpdateMergeRequestNoteSchema.parse(request.params.arguments);
+        const note = await gitlabApi.updateMergeRequestNote(
+          args.project_id,
+          args.merge_request_iid,
+          args.note_id,
+          args.body
+        );
+        return { content: [{ type: "text", text: JSON.stringify(note, null, 2) }] };
+      }
+
+      case "list_merge_request_discussions": {
+        const args = ListMergeRequestDiscussionsSchema.parse(request.params.arguments);
+
+        // Additional validation for pagination parameters
+        if (args.per_page && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const discussions = await gitlabApi.getMergeRequestDiscussions(
+          args.project_id,
+          args.merge_request_iid,
+          {
+            page: args.page,
+            per_page: args.per_page
+          }
+        );
+
+        return formatDiscussionsResponse(discussions);
+      }
+
+      // ===========================================================================
+      // CI/CD: Pipelines
+      // ===========================================================================
+
+      case "list_pipelines": {
+        const args = ListPipelinesSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const { project_id, ...options } = args;
+        const pipelines = await gitlabApi.listPipelines(project_id, options);
+        return formatPipelinesResponse(pipelines);
+      }
+
+      case "get_pipeline": {
+        const args = GetPipelineSchema.parse(request.params.arguments);
+        const pipeline = await gitlabApi.getPipeline(args.project_id, args.pipeline_id);
+        return { content: [{ type: "text", text: JSON.stringify(pipeline, null, 2) }] };
+      }
+
+      case "trigger_pipeline": {
+        const args = TriggerPipelineSchema.parse(request.params.arguments);
+        const pipeline = await gitlabApi.triggerPipeline(args.project_id, args.ref, args.variables);
+        return { content: [{ type: "text", text: JSON.stringify(pipeline, null, 2) }] };
+      }
+
+      case "retry_pipeline": {
+        const args = RetryPipelineSchema.parse(request.params.arguments);
+        const pipeline = await gitlabApi.retryPipeline(args.project_id, args.pipeline_id);
+        return { content: [{ type: "text", text: JSON.stringify(pipeline, null, 2) }] };
+      }
+
+      case "cancel_pipeline": {
+        const args = CancelPipelineSchema.parse(request.params.arguments);
+        const pipeline = await gitlabApi.cancelPipeline(args.project_id, args.pipeline_id);
+        return { content: [{ type: "text", text: JSON.stringify(pipeline, null, 2) }] };
+      }
+
+      // ===========================================================================
+      // CI/CD: Jobs
+      // ===========================================================================
+
+      case "list_pipeline_jobs": {
+        const args = ListPipelineJobsSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const jobs = await gitlabApi.listPipelineJobs(args.project_id, args.pipeline_id, {
+          scope: args.scope,
+          include_retried: args.include_retried,
+          page: args.page,
+          per_page: args.per_page
+        });
+        return formatJobsResponse(jobs);
+      }
+
+      case "get_job": {
+        const args = GetJobSchema.parse(request.params.arguments);
+        const job = await gitlabApi.getJob(args.project_id, args.job_id);
+        return { content: [{ type: "text", text: JSON.stringify(job, null, 2) }] };
+      }
+
+      case "get_job_log": {
+        const args = GetJobLogSchema.parse(request.params.arguments);
+        const log = await gitlabApi.getJobLog(args.project_id, args.job_id);
+        return { content: [{ type: "text", text: log }] };
+      }
+
+      case "retry_job": {
+        const args = RetryJobSchema.parse(request.params.arguments);
+        const job = await gitlabApi.retryJob(args.project_id, args.job_id);
+        return { content: [{ type: "text", text: JSON.stringify(job, null, 2) }] };
+      }
+
+      case "cancel_job": {
+        const args = CancelJobSchema.parse(request.params.arguments);
+        const job = await gitlabApi.cancelJob(args.project_id, args.job_id);
+        return { content: [{ type: "text", text: JSON.stringify(job, null, 2) }] };
+      }
+
+      // ===========================================================================
+      // CI/CD: Environments
+      // ===========================================================================
+
+      case "list_environments": {
+        const args = ListEnvironmentsSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const { project_id, ...options } = args;
+        const environments = await gitlabApi.listEnvironments(project_id, options);
+        return formatEnvironmentsResponse(environments);
+      }
+
+      case "get_environment": {
+        const args = GetEnvironmentSchema.parse(request.params.arguments);
+        const environment = await gitlabApi.getEnvironment(args.project_id, args.environment_id);
+        return { content: [{ type: "text", text: JSON.stringify(environment, null, 2) }] };
+      }
+
+      // ===========================================================================
+      // Repository: Branches
+      // ===========================================================================
+
+      case "list_branches": {
+        const args = ListBranchesSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const { project_id, ...options } = args;
+        const branches = await gitlabApi.listBranches(project_id, options);
+        return formatBranchesResponse(branches);
+      }
+
+      case "delete_branch": {
+        const args = DeleteBranchSchema.parse(request.params.arguments);
+        await gitlabApi.deleteBranch(args.project_id, args.branch);
+        return { content: [{ type: "text", text: `Branch '${args.branch}' has been deleted.` }] };
+      }
+
+      case "compare_branches": {
+        const args = CompareBranchesSchema.parse(request.params.arguments);
+        const result = await gitlabApi.compareBranches(args.project_id, args.from, args.to, args.straight);
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      // ===========================================================================
+      // Repository: Tags
+      // ===========================================================================
+
+      case "list_tags": {
+        const args = ListTagsSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const { project_id, ...options } = args;
+        const tags = await gitlabApi.listTags(project_id, options);
+        return formatTagsResponse(tags);
+      }
+
+      case "create_tag": {
+        const args = CreateTagSchema.parse(request.params.arguments);
+        const tag = await gitlabApi.createTag(
+          args.project_id,
+          args.tag_name,
+          args.ref,
+          args.message,
+          args.release_description
+        );
+        return { content: [{ type: "text", text: JSON.stringify(tag, null, 2) }] };
+      }
+
+      // ===========================================================================
+      // Repository: Tree
+      // ===========================================================================
+
+      case "get_repository_tree": {
+        const args = GetRepositoryTreeSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const { project_id, ...options } = args;
+        const tree = await gitlabApi.getRepositoryTree(project_id, options);
+        return formatTreeResponse(tree);
+      }
+
+      // ===========================================================================
+      // Repository: Releases
+      // ===========================================================================
+
+      case "list_releases": {
+        const args = ListReleasesSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const { project_id, ...options } = args;
+        const releases = await gitlabApi.listReleases(project_id, options);
+        return formatReleasesResponse(releases);
+      }
+
+      case "create_release": {
+        const args = CreateReleaseSchema.parse(request.params.arguments);
+        const { project_id, tag_name, ...options } = args;
+        const release = await gitlabApi.createRelease(project_id, tag_name, options);
+        return { content: [{ type: "text", text: JSON.stringify(release, null, 2) }] };
+      }
+
+      // ===========================================================================
+      // Issues: Update & Notes
+      // ===========================================================================
+
+      case "update_issue": {
+        const args = UpdateIssueSchema.parse(request.params.arguments);
+        const { project_id, issue_iid, ...options } = args;
+        const issue = await gitlabApi.updateIssue(project_id, issue_iid, options);
+        return { content: [{ type: "text", text: JSON.stringify(issue, null, 2) }] };
+      }
+
+      case "create_issue_note": {
+        const args = CreateIssueNoteSchema.parse(request.params.arguments);
+        const note = await gitlabApi.createIssueNote(
+          args.project_id,
+          args.issue_iid,
+          args.body,
+          args.internal
+        );
+        return { content: [{ type: "text", text: JSON.stringify(note, null, 2) }] };
+      }
+
+      // ===========================================================================
+      // Labels
+      // ===========================================================================
+
+      case "list_labels": {
+        const args = ListLabelsSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const { project_id, ...options } = args;
+        const labels = await gitlabApi.listLabels(project_id, options);
+        return formatLabelsResponse(labels);
+      }
+
+      case "create_label": {
+        const args = CreateLabelSchema.parse(request.params.arguments);
+        const label = await gitlabApi.createLabel(
+          args.project_id,
+          args.name,
+          args.color,
+          args.description,
+          args.priority
+        );
+        return { content: [{ type: "text", text: JSON.stringify(label, null, 2) }] };
+      }
+
+      case "update_label": {
+        const args = UpdateLabelSchema.parse(request.params.arguments);
+        const { project_id, label_id, ...options } = args;
+        const label = await gitlabApi.updateLabel(project_id, label_id, options);
+        return { content: [{ type: "text", text: JSON.stringify(label, null, 2) }] };
+      }
+
+      // ===========================================================================
+      // Milestones
+      // ===========================================================================
+
+      case "list_milestones": {
+        const args = ListMilestonesSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const { project_id, ...options } = args;
+        const milestones = await gitlabApi.listMilestones(project_id, options);
+        return formatMilestonesResponse(milestones);
+      }
+
+      case "create_milestone": {
+        const args = CreateMilestoneSchema.parse(request.params.arguments);
+        const { project_id, title, ...options } = args;
+        const milestone = await gitlabApi.createMilestone(project_id, title, options);
+        return { content: [{ type: "text", text: JSON.stringify(milestone, null, 2) }] };
+      }
+
+      case "update_milestone": {
+        const args = UpdateMilestoneSchema.parse(request.params.arguments);
+        const { project_id, milestone_id, ...options } = args;
+        const milestone = await gitlabApi.updateMilestone(project_id, milestone_id, options);
+        return { content: [{ type: "text", text: JSON.stringify(milestone, null, 2) }] };
+      }
+
+      // ===========================================================================
+      // MR Enhancements
+      // ===========================================================================
+
+      case "get_merge_request_changes": {
+        const args = GetMergeRequestChangesSchema.parse(request.params.arguments);
+        const changes = await gitlabApi.getMergeRequestChanges(
+          args.project_id,
+          args.merge_request_iid,
+          args.access_raw_diffs
+        );
+        return { content: [{ type: "text", text: JSON.stringify(changes, null, 2) }] };
+      }
+
+      case "get_merge_request_commits": {
+        const args = GetMergeRequestCommitsSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const commits = await gitlabApi.getMergeRequestCommits(
+          args.project_id,
+          args.merge_request_iid,
+          { page: args.page, per_page: args.per_page }
+        );
+        return formatCommitsResponse(commits);
+      }
+
+      case "update_merge_request": {
+        const args = UpdateMergeRequestSchema.parse(request.params.arguments);
+        const { project_id, merge_request_iid, ...options } = args;
+        const mergeRequest = await gitlabApi.updateMergeRequest(project_id, merge_request_iid, options);
+        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+      }
+
+      case "rebase_merge_request": {
+        const args = RebaseMergeRequestSchema.parse(request.params.arguments);
+        const result = await gitlabApi.rebaseMergeRequest(
+          args.project_id,
+          args.merge_request_iid,
+          args.skip_ci
+        );
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "create_merge_request_discussion": {
+        const args = CreateMergeRequestDiscussionSchema.parse(request.params.arguments);
+        const discussion = await gitlabApi.createMergeRequestDiscussion(
+          args.project_id,
+          args.merge_request_iid,
+          args.body,
+          args.position
+        );
+        return { content: [{ type: "text", text: JSON.stringify(discussion, null, 2) }] };
+      }
+
+      // ===========================================================================
+      // Protected Branches
+      // ===========================================================================
+
+      case "list_protected_branches": {
+        const args = ListProtectedBranchesSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const { project_id, ...options } = args;
+        const branches = await gitlabApi.listProtectedBranches(project_id, options);
+        return formatProtectedBranchesResponse(branches);
+      }
+
+      case "protect_branch": {
+        const args = ProtectBranchSchema.parse(request.params.arguments);
+        const { project_id, name, ...options } = args;
+        const branch = await gitlabApi.protectBranch(project_id, name, options);
+        return { content: [{ type: "text", text: JSON.stringify(branch, null, 2) }] };
+      }
+
+      case "unprotect_branch": {
+        const args = UnprotectBranchSchema.parse(request.params.arguments);
+        await gitlabApi.unprotectBranch(args.project_id, args.name);
+        return { content: [{ type: "text", text: `Branch '${args.name}' is no longer protected.` }] };
+      }
+
+      // ===========================================================================
+      // Projects
+      // ===========================================================================
+
+      case "get_project": {
+        const args = GetProjectSchema.parse(request.params.arguments);
+        const { project_id, ...options } = args;
+        const project = await gitlabApi.getProject(project_id, options);
+        return { content: [{ type: "text", text: JSON.stringify(project, null, 2) }] };
+      }
+
+      case "update_project": {
+        const args = UpdateProjectSchema.parse(request.params.arguments);
+        const { project_id, ...options } = args;
+        const project = await gitlabApi.updateProject(project_id, options);
+        return { content: [{ type: "text", text: JSON.stringify(project, null, 2) }] };
+      }
+
+      // ===========================================================================
+      // Users
+      // ===========================================================================
+
+      case "get_current_user": {
+        const user = await gitlabApi.getCurrentUser();
+        return { content: [{ type: "text", text: JSON.stringify(user, null, 2) }] };
+      }
+
+      case "list_users": {
+        const args = ListUsersSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const users = await gitlabApi.listUsers(args);
+        return formatUsersResponse(users);
+      }
+
+      case "get_user": {
+        const args = GetUserSchema.parse(request.params.arguments);
+        const user = await gitlabApi.getUser(args.user_id);
+        return { content: [{ type: "text", text: JSON.stringify(user, null, 2) }] };
+      }
+
+      // ===========================================================================
+      // Groups
+      // ===========================================================================
+
+      case "list_groups": {
+        const args = ListGroupsSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const groups = await gitlabApi.listGroups(args);
+        return formatGroupsResponse(groups);
+      }
+
+      case "get_group": {
+        const args = GetGroupSchema.parse(request.params.arguments);
+        const { group_id, ...options } = args;
+        const group = await gitlabApi.getGroup(group_id, options);
+        return { content: [{ type: "text", text: JSON.stringify(group, null, 2) }] };
+      }
+
+      case "list_group_subgroups": {
+        const args = ListGroupSubgroupsSchema.parse(request.params.arguments);
+
+        if (args.per_page !== undefined && (args.per_page < 1 || args.per_page > 100)) {
+          throw new Error("per_page must be between 1 and 100");
+        }
+
+        if (args.page !== undefined && args.page < 1) {
+          throw new Error("page must be greater than 0");
+        }
+
+        const { group_id, ...options } = args;
+        const subgroups = await gitlabApi.listGroupSubgroups(group_id, options);
+        return formatGroupsResponse(subgroups);
+      }
+
+      case "create_group": {
+        const args = CreateGroupSchema.parse(request.params.arguments);
+        const { name, path, ...options } = args;
+        const group = await gitlabApi.createGroup(name, path, options);
+        return { content: [{ type: "text", text: JSON.stringify(group, null, 2) }] };
+      }
+
+      case "update_group": {
+        const args = UpdateGroupSchema.parse(request.params.arguments);
+        const { group_id, ...options } = args;
+        const group = await gitlabApi.updateGroup(group_id, options);
+        return { content: [{ type: "text", text: JSON.stringify(group, null, 2) }] };
+      }
+
+      case "delete_group": {
+        const args = DeleteGroupSchema.parse(request.params.arguments);
+        await gitlabApi.deleteGroup(args.group_id);
+        return { content: [{ type: "text", text: `Group '${args.group_id}' has been scheduled for deletion.` }] };
       }
 
       default:
