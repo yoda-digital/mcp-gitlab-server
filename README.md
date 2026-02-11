@@ -27,6 +27,44 @@
 
 - **Comprehensive GitLab API Integration** - Access repositories, issues, merge requests, wikis, and more
 - **Both Transports Supported** - Use with stdio or Server-Sent Events (SSE)
+## 🤖 Revolutionary Features
+
+### AI-Powered MR Description Generator
+
+**World's first GitLab MCP server with built-in AI tooling!**
+
+Save 5-10 minutes per merge request with our Gemini-powered description generator:
+
+```bash
+./tools/generate-mr-description.sh feature/my-branch main
+```
+
+**What it does:**
+- Analyzes your commits and changed files
+- Generates professional, comprehensive MR descriptions
+- Suggests appropriate labels
+- Identifies potential breaking changes
+- Creates testing checklists
+
+**Output example:**
+```markdown
+## Summary
+Add CI/CD pipeline management to GitLab MCP server
+
+## Changes
+- Implement pipeline triggering and job management
+- Add support for pipeline variables
+- Include retry/cancel operations
+
+## Testing
+- 38 new test cases with Vitest
+- Integration tests for all pipeline operations
+```
+
+**No other GitLab MCP server has this!** See [tools/README.md](./tools/README.md) for details.
+
+---
+
 - **Consistent Response Formatting** - Standardized pagination and response structures
 - **Strong TypeScript Typing** - Built with the MCP SDK for type safety
 - **Complete Documentation** - Examples for all available tools
