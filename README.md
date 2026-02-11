@@ -27,17 +27,18 @@
 
 ## 🏆 Why Choose This GitLab MCP?
 
-### **60+ Tools** vs. Competitors' 10-20
+### **86 Comprehensive Tools** vs. Competitors' 10-20
 We provide the most comprehensive GitLab API coverage in any MCP implementation:
 
 | Feature Category | Our Implementation | Typical Competitor |
 |-----------------|-------------------|-------------------|
-| **Total Tools** | **60+** | 10-20 |
-| **AI Features** | ✅ Gemini-powered MR descriptions | ❌ None |
+| **Total Tools** | **86** | 10-20 |
 | **CI/CD Pipelines** | ✅ Full pipeline management | ⚠️ Basic or missing |
-| **Wiki Management** | ✅ With attachments | ⚠️ Limited |
+| **Wiki Management** | ✅ With attachments (project + group) | ⚠️ Limited |
 | **Member Management** | ✅ Project + Group | ⚠️ Read-only |
-| **Active Development** | ✅ Latest PR Jan 2026 | ❌ Stale repos |
+| **Protected Branches** | ✅ Full management | ❌ Missing |
+| **Labels & Milestones** | ✅ Complete CRUD | ⚠️ Limited |
+| **Active Development** | ✅ Latest PR Feb 2026 | ❌ Stale repos |
 | **Enterprise Features** | ✅ Roadmapped (v0.5.0) | ❌ Missing |
 
 **[See Full Product Vision & Roadmap](./docs/VISION.md)**
@@ -46,26 +47,7 @@ We provide the most comprehensive GitLab API coverage in any MCP implementation:
 
 ## ✨ Key Features
 
-### 🤖 AI-Powered Tooling (World's First!)
-
-**Gemini-Powered MR Description Generator** — Save 5-10 minutes per merge request:
-
-```bash
-./tools/generate-mr-description.sh feature/my-branch main
-```
-
-**What it does:**
-- Analyzes commits and changed files
-- Generates professional, comprehensive MR descriptions
-- Suggests appropriate labels
-- Identifies potential breaking changes
-- Creates testing checklists
-
-**No other GitLab MCP has this.** [Learn more →](./tools/README.md)
-
----
-
-### 🔧 Comprehensive GitLab Integration
+### 🔧 Comprehensive GitLab Integration (86 Tools)
 
 - **Repository Management** — Search, create, fork, archive repositories
 - **File Operations** — Read, create, update, delete files with full branch support
