@@ -1,15 +1,16 @@
 {
   "name": "@yoda.digital/gitlab-mcp-server",
-  "version": "0.2.10",
+  "version": "0.3.0",
   "description": "GitLab MCP Server - A Model Context Protocol server for GitLab integration",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc && chmod +x dist/*.js",
+    "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node --esm src/index.ts",
     "prepare": "npm run build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "bin": {
     "gitlab-mcp-server": "./dist/index.js"
@@ -38,7 +39,8 @@
     "@types/node": "^20.11.19",
     "@types/node-fetch": "^2.6.12",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.16"
   },
   "engines": {
     "node": ">=18.0.0"
