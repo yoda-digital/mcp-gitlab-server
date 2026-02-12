@@ -6,7 +6,16 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@yoda.digital/gitlab-mcp-server">
-    <img alt="npm" src="https://img.shields.io/npm/v/@yoda.digital/gitlab-mcp-server?color=blue">
+    <img alt="npm version" src="https://img.shields.io/npm/v/@yoda.digital/gitlab-mcp-server?color=blue">
+  </a>
+  <a href="https://www.npmjs.com/package/@yoda.digital/gitlab-mcp-server">
+    <img alt="npm downloads" src="https://img.shields.io/npm/dt/@yoda.digital/gitlab-mcp-server">
+  </a>
+  <a href="https://github.com/yoda-digital/mcp-gitlab-server/stargazers">
+    <img alt="GitHub stars" src="https://img.shields.io/github/stars/yoda-digital/mcp-gitlab-server?style=social">
+  </a>
+  <a href="https://github.com/yoda-digital/mcp-gitlab-server/commits/main">
+    <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/yoda-digital/mcp-gitlab-server">
   </a>
   <a href="https://github.com/yoda-digital/mcp-gitlab-server/blob/main/LICENSE">
     <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg">
@@ -14,8 +23,8 @@
   <a href="https://github.com/yoda-digital/mcp-gitlab-server/issues">
     <img alt="GitHub issues" src="https://img.shields.io/github/issues/yoda-digital/mcp-gitlab-server">
   </a>
-  <a href="https://github.com/yoda-digital/mcp-gitlab-server/stargazers">
-    <img alt="GitHub stars" src="https://img.shields.io/github/stars/yoda-digital/mcp-gitlab-server">
+  <a href="https://github.com/yoda-digital/mcp-gitlab-server/pulls">
+    <img alt="GitHub pull requests" src="https://img.shields.io/github/issues-pr/yoda-digital/mcp-gitlab-server">
   </a>
 </p>
 
