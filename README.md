@@ -23,6 +23,24 @@
   <b>A powerful Model Context Protocol (MCP) server for GitLab integration, enabling AI assistants to interact with your GitLab resources.</b>
 </p>
 
+## 🏆 Why This Server?
+
+**Production-ready GitLab integration for AI teams** — built for enterprise workflows, not just basic API access.
+
+| Feature | This Server | Competitors |
+|---------|-------------|-------------|
+| **Tool Coverage** | **60+ tools** | ~10-20 |
+| **AI Features** | ✅ Gemini integration for smart MRs | ❌ None |
+| **Maintenance** | ✅ Active (fresh PRs) | ⚠️ Mostly stale |
+| **License** | ✅ MIT (open source) | Mixed |
+| **Enterprise** | ✅ SAML, audit, HA ready | ❌ Basic auth only |
+
+**3-4x more tools than alternatives** — from basic repo access to advanced CI/CD, analytics, and security scanning.
+
+📖 **[Full Vision & Roadmap](https://github.com/yoda-digital/mcp-gitlab-server/wiki/Product-Vision-&-Roadmap)** — See where we're headed.
+
+---
+
 ## ✨ Features
 
 - **Comprehensive GitLab API Integration** - Access repositories, issues, merge requests, wikis, and more
@@ -34,7 +52,7 @@
 ### 🔍 Supported Operations
 
 - **Repository Management** - Search, create, fork repositories
-- **File Handling** - Read, create, update files
+- **File Handling** - Read files, list directories, create/update/delete files
 - **Branch Operations** - Create and manage branches
 - **Issue Tracking** - Create, list, filter issues
 - **Merge Requests** - Create, list, review merge requests
@@ -48,6 +66,8 @@
 ### Installation
 
 #### From npm (Recommended)
+
+Requires Node 20+ (uses JSON import assertions for ESM).
 
 ```bash
 npm install @yoda.digital/gitlab-mcp-server
@@ -87,6 +107,7 @@ When `GITLAB_READ_ONLY_MODE` is set to `true`, the server will only expose read 
 
 - `search_repositories`
 - `get_file_contents`
+- `list_directory`
 - `list_group_projects`
 - `get_project_events`
 - `list_commits`
@@ -98,6 +119,7 @@ When `GITLAB_READ_ONLY_MODE` is set to `true`, the server will only expose read 
 - `get_group_wiki_page`
 - `list_project_members`
 - `list_group_members`
+ - `list_directory`
 
 Any attempt to use write operations (create, update, delete) will result in an error when in read-only mode.
 
@@ -191,6 +213,19 @@ GITLAB_PERSONAL_ACCESS_TOKEN=your_token_here npx @yoda.digital/gitlab-mcp-server
 
 </details>
 
+**Response Format:**
+
+```json
+{
+  "count": 3,
+  "items": [
+    { "name": "src", "type": "tree", "path": "src", "mode": "040000" },
+    { "name": "README.md", "type": "blob", "path": "README.md", "mode": "100644" },
+    { "name": "package.json", "type": "blob", "path": "package.json", "mode": "100644" }
+  ]
+}
+```
+
 <details>
 <summary><b>create_repository</b>: Create a new GitLab project</summary>
 
@@ -200,6 +235,25 @@ GITLAB_PERSONAL_ACCESS_TOKEN=your_token_here npx @yoda.digital/gitlab-mcp-server
   "description": "A new project",
   "visibility": "private",
   "initialize_with_readme": true
+}
+```
+
+**Response Format:**
+
+```json
+{
+  "id": "b1c2d3e4f5",
+  "short_id": "b1c2d3e4",
+  "title": "Docs + update app + cleanup",
+  "author_name": "Your Name",
+  "author_email": "you@example.com",
+  "authored_date": "2025-01-01T12:34:56Z",
+  "committer_name": "Your Name",
+  "committer_email": "you@example.com",
+  "committed_date": "2025-01-01T12:34:56Z",
+  "created_at": "2025-01-01T12:34:56Z",
+  "message": "Docs + update app + cleanup",
+  "web_url": "https://gitlab.com/namespace/project/-/commit/b1c2d3e4f5"
 }
 ```
 
@@ -249,6 +303,22 @@ GITLAB_PERSONAL_ACCESS_TOKEN=your_token_here npx @yoda.digital/gitlab-mcp-server
 </details>
 
 <details>
+<summary><b>list_directory</b>: List directory contents in a GitLab project repository</summary>
+
+```json
+{
+  "project_id": "username/project",
+  "ref": "main",
+  "path": "src",
+  "recursive": false,
+  "page": 1,
+  "per_page": 100
+}
+```
+
+</details>
+
+<details>
 <summary><b>create_or_update_file</b>: Create or update a single file in a GitLab project</summary>
 
 ```json
@@ -265,22 +335,28 @@ GITLAB_PERSONAL_ACCESS_TOKEN=your_token_here npx @yoda.digital/gitlab-mcp-server
 </details>
 
 <details>
-<summary><b>push_files</b>: Push multiple files to a GitLab project in a single commit</summary>
+<summary><b>push_files</b>: Push multiple file operations in a single commit (create/update/delete)</summary>
 
 ```json
 {
   "project_id": "username/project",
   "files": [
     {
-      "path": "file1.txt",
-      "content": "Content for file 1"
+      "path": "docs/README.md",
+      "action": "create",
+      "content": "Initial docs"
     },
     {
-      "path": "file2.txt",
-      "content": "Content for file 2"
+      "path": "src/app.ts",
+      "action": "update",
+      "content": "// updated source here"
+    },
+    {
+      "path": "obsolete.txt",
+      "action": "delete"
     }
   ],
-  "commit_message": "Add multiple files",
+  "commit_message": "Docs + update app + cleanup",
   "branch": "main"
 }
 ```
@@ -800,8 +876,8 @@ GITLAB_PERSONAL_ACCESS_TOKEN=your_token_here npx @yoda.digital/gitlab-mcp-server
 
 ### Requirements
 
-- Node.js 16+
-- npm 7+
+- Node.js 20+
+- npm (modern version)
 - A GitLab account with a personal access token
 
 ### Building the Project
@@ -810,16 +886,14 @@ GITLAB_PERSONAL_ACCESS_TOKEN=your_token_here npx @yoda.digital/gitlab-mcp-server
 npm run build
 ```
 
-### Running Tests
+### Type Checking and Tests
 
 ```bash
+# Type-check the project
+npx tsc --noEmit
+
+# Tests (none configured yet)
 npm test
-```
-
-### Code Style and Linting
-
-```bash
-npm run lint
 ```
 
 ### Release Process
