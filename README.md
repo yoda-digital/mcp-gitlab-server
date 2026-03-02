@@ -29,26 +29,30 @@
 </p>
 
 <p align="center">
-  <b>The most comprehensive Model Context Protocol (MCP) server for GitLab — 60+ tools, AI-powered features, enterprise-ready.</b>
+  <b>The most comprehensive Model Context Protocol (MCP) server for GitLab — 86 tools, enterprise-ready, actively maintained.</b>
 </p>
 
 ---
 
 ## 🏆 Why Choose This GitLab MCP?
 
-### **86 Comprehensive Tools** vs. Competitors' 10-20
-We provide the most comprehensive GitLab API coverage in any MCP implementation:
+### **86 Tools** — The Most Comprehensive GitLab MCP Available
 
-| Feature Category | Our Implementation | Typical Competitor |
-|-----------------|-------------------|-------------------|
-| **Total Tools** | **86** | 10-20 |
-| **CI/CD Pipelines** | ✅ Full pipeline management | ⚠️ Basic or missing |
-| **Wiki Management** | ✅ With attachments (project + group) | ⚠️ Limited |
-| **Member Management** | ✅ Project + Group | ⚠️ Read-only |
-| **Protected Branches** | ✅ Full management | ❌ Missing |
-| **Labels & Milestones** | ✅ Complete CRUD | ⚠️ Limited |
-| **Active Development** | ✅ Latest PR Feb 2026 | ❌ Stale repos |
-| **Enterprise Features** | ✅ Roadmapped (v0.5.0) | ❌ Missing |
+| Feature | **yoda-digital/mcp-gitlab-server** ⭐ | [zerefel/gitlab-mcp](https://github.com/zerefel/gitlab-mcp) 1023★ | [rifqi96/mcp-gitlab](https://github.com/rifqi96/mcp-gitlab) 18★ | [HainanZhao/mcp-gitlab-jira](https://github.com/HainanZhao/mcp-gitlab-jira) 9★ |
+|---------|--------------------------------------|------------------------------------------------------------------|------------------------------------------------------------------|---------------------------------------------------------------------------------|
+| **Total Tools** | **86** | ~15 | ~12 | ~20 |
+| **npm Package** | ✅ Published | ❌ Source only | ❌ Source only | ❌ Source only |
+| **CI/CD Pipelines** | ✅ Full management | ⚠️ Basic | ❌ Missing | ⚠️ Basic |
+| **Wiki Management** | ✅ Project + Group | ❌ Missing | ❌ Missing | ❌ Missing |
+| **Member Management** | ✅ Project + Group | ❌ Missing | ❌ Missing | ❌ Missing |
+| **Protected Branches** | ✅ Full CRUD | ❌ Missing | ❌ Missing | ❌ Missing |
+| **Labels & Milestones** | ✅ Complete CRUD | ⚠️ Limited | ⚠️ Limited | ⚠️ Limited |
+| **Group Operations** | ✅ Full coverage | ⚠️ Basic | ❌ Missing | ❌ Missing |
+| **Releases** | ✅ Full management | ❌ Missing | ❌ Missing | ❌ Missing |
+| **SSE Transport** | ✅ Supported | ❌ stdio only | ❌ stdio only | ❌ stdio only |
+| **Read-Only Mode** | ✅ Built-in | ❌ Missing | ❌ Missing | ❌ Missing |
+| **Active Maintenance** | ✅ Feb 2026 | ⚠️ Irregular | ⚠️ Irregular | ⚠️ Irregular |
+| **Jira Integration** | 🗓️ Roadmap | ❌ Missing | ❌ Missing | ✅ Basic |
 
 **[See Full Product Vision & Roadmap](./docs/VISION.md)**
 
@@ -115,8 +119,8 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "gitlab": {
-      "command": "node",
-      "args": ["/path/to/mcp-gitlab-server/build/index.js"],
+      "command": "npx",
+      "args": ["-y", "@yoda.digital/gitlab-mcp-server"],
       "env": {
         "GITLAB_PERSONAL_ACCESS_TOKEN": "your-token-here",
         "GITLAB_URL": "https://gitlab.com"
@@ -125,6 +129,11 @@ Add to your `claude_desktop_config.json`:
   }
 }
 ```
+
+> **Note:** The recommended approach is via `npx` (no install needed). If you cloned from source or installed globally, use `node` with the path to your built `dist/index.js`:
+> ```json
+> "args": ["node_modules/@yoda.digital/gitlab-mcp-server/dist/index.js"]
+> ```
 
 #### For Cursor IDE
 
