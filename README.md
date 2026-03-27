@@ -123,7 +123,7 @@ Add to your `claude_desktop_config.json`:
       "args": ["-y", "@yoda.digital/gitlab-mcp-server"],
       "env": {
         "GITLAB_PERSONAL_ACCESS_TOKEN": "your-token-here",
-        "GITLAB_URL": "https://gitlab.com"
+        "GITLAB_API_URL": "https://gitlab.com/api/v4"
       }
     }
   }
@@ -142,7 +142,7 @@ See our [Cursor Integration Guide](./docs/CURSOR_INTEGRATION.md) for step-by-ste
 ### Environment Variables
 
 - `GITLAB_PERSONAL_ACCESS_TOKEN` — Your GitLab PAT (required)
-- `GITLAB_URL` — GitLab instance URL (default: `https://gitlab.com`)
+- `GITLAB_API_URL` — GitLab API URL (default: `https://gitlab.com/api/v4`)
 - `GITLAB_READ_ONLY` — Set to `true` for read-only mode (optional)
 
 ---

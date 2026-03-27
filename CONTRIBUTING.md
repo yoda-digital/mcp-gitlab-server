@@ -46,7 +46,7 @@ Create a `.env` file (or export environment variables):
 
 ```bash
 GITLAB_PERSONAL_ACCESS_TOKEN=your-token-here
-GITLAB_URL=https://gitlab.com  # or your GitLab instance
+GITLAB_API_URL=https://gitlab.com/api/v4  # or your GitLab instance API endpoint
 ```
 
 ---
