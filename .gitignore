@@ -58,3 +58,4 @@ temp/
 
 # Local docs
 implementation/
+.mcp.json
