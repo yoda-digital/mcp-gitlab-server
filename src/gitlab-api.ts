@@ -626,20 +626,21 @@ export class GitLabApi {
       per_page?: number;
     } = {}
   ): Promise<GitLabIssuesResponse> {
-    // Extract iid for client-side filtering if provided
     const { iid, ...apiOptions } = options;
 
-    // Construct the URL with the project ID
     const url = new URL(
       `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/issues`
     );
 
-    // Add all query parameters except iid (we'll filter that client-side)
     Object.entries(apiOptions).forEach(([key, value]) => {
       if (value !== undefined) {
         url.searchParams.append(key, value.toString());
       }
     });
+
+    if (iid !== undefined) {
+      url.searchParams.append('iids[]', iid.toString());
+    }
 
     const response = await fetch(url.toString(), {
       headers: {
@@ -654,21 +655,12 @@ export class GitLabApi {
       );
     }
 
-    // Parse the response JSON
     const issues = await response.json() as any[];
+    const totalCount = parseInt(response.headers.get("X-Total") || "0");
 
-    // If iid is provided, filter the issues by iid
-    const filteredIssues = iid !== undefined
-      ? issues.filter(issue => issue.iid?.toString() === iid.toString())
-      : issues;
-
-    // Get the total count - if filtered, use the filtered length
-    const totalCount = iid !== undefined ? filteredIssues.length : parseInt(response.headers.get("X-Total") || "0");
-
-    // Validate and return the response
     return GitLabIssuesResponseSchema.parse({
       count: totalCount,
-      items: filteredIssues,
+      items: issues,
     });
   }
 
