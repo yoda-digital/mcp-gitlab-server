@@ -59,3 +59,6 @@ temp/
 # Local docs
 implementation/
 .mcp.json
+
+# Local tool caches (Serena)
+.serena/
