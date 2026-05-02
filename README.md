@@ -5,6 +5,12 @@
 </p>
 
 <p align="center">
+  <a href="https://opensource.yoda.digital/projects/mcp-gitlab-server/">
+    <img alt="Listed on Yoda Digital Open Source" src="https://img.shields.io/badge/listed%20on-opensource.yoda.digital-af9568?style=flat-square">
+  </a>
+</p>
+
+<p align="center">
   <a href="https://www.npmjs.com/package/@yoda.digital/gitlab-mcp-server">
     <img alt="npm version" src="https://img.shields.io/npm/v/@yoda.digital/gitlab-mcp-server?color=blue">
   </a>
