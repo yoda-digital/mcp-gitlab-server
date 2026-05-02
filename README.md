@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://opensource.yoda.digital/projects/mcp-gitlab-server/">
+  <a href="https://opensource.yoda.digital/en/projects/mcp-gitlab-server/">
     <img alt="Listed on Yoda Digital Open Source" src="https://img.shields.io/badge/listed%20on-opensource.yoda.digital-af9568?style=flat-square">
   </a>
 </p>
