@@ -1,0 +1,60 @@
+{{ template "chart.header" . }}
+
+{{ template "chart.description" . }}
+
+{{ template "chart.homepageLine" . }}
+
+## Prerequisites
+
+- Kubernetes 1.26+
+- Helm 3.12+
+
+## Installing the chart
+
+```bash
+helm install gitlab-mcp oci://ghcr.io/yoda-digital/charts/gitlab-mcp \
+  --set secret.GITLAB_PERSONAL_ACCESS_TOKEN="glpat-xxxxxxxxxxxxxxxxxxxx"
+```
+
+### Using an existing Secret
+
+```bash
+kubectl create secret generic gitlab-mcp-token \
+  --from-literal=GITLAB_PERSONAL_ACCESS_TOKEN="glpat-xxxx"
+
+helm install gitlab-mcp oci://ghcr.io/yoda-digital/charts/gitlab-mcp \
+  --set existingSecret=gitlab-mcp-token
+```
+
+### OAuth mode (per-connection tokens)
+
+```bash
+helm install gitlab-mcp oci://ghcr.io/yoda-digital/charts/gitlab-mcp \
+  --set config.AUTH_MODE=oauth \
+  --set config.CORS_ALLOW_ORIGINS="https://my-app.example.com"
+```
+
+## Fail-loud guards
+
+The chart includes render-time validation:
+
+- **Empty PAT token** — fails if `AUTH_MODE=pat` with no token and no `existingSecret`.
+- **PDB deadlock** — fails if `minAvailable >= replicaCount` (would block node drains).
+- **Mutual exclusion** — fails if both `existingSecret` and inline `secret.GITLAB_PERSONAL_ACCESS_TOKEN` are set.
+
+## Multi-replica considerations
+
+SSE and Streamable HTTP transports hold in-memory session state. Running
+multiple replicas requires sticky sessions (e.g. session-affinity or an
+ingress controller with cookie-based routing). See
+[docs/OPERATIONS.md](../docs/OPERATIONS.md) for details.
+
+{{ template "chart.valuesSection" . }}
+
+## Uninstalling
+
+```bash
+helm uninstall gitlab-mcp
+```
+
+{{ template "chart.maintainersSection" . }}
