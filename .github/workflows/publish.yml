@@ -40,8 +40,14 @@ jobs:
       !contains(github.event.head_commit.message, 'update changelog [skip ci]')
     needs: build-and-test
     runs-on: ubuntu-latest
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/@yoda.digital/gitlab-mcp-server
     permissions:
       contents: read
+      # id-token: write is required for both:
+      #   1. npm OIDC trusted publishing (no NPM_TOKEN needed)
+      #   2. Sigstore-signed provenance attestations
       id-token: write
     steps:
       - uses: actions/checkout@v6
@@ -52,6 +58,13 @@ jobs:
           scope: "@yoda.digital"
       - run: npm ci
       - run: npm run build
+      # No NODE_AUTH_TOKEN. Authentication is via npm Trusted Publishing —
+      # configure on npmjs.com:
+      #   Package settings → Publishing access → Trusted publisher
+      #   Publisher: GitHub Actions
+      #   Organization: yoda-digital
+      #   Repository: mcp-gitlab-server
+      #   Workflow filename: .github/workflows/publish.yml
+      #   Environment name: npm-publish
+      # Reference: https://docs.npmjs.com/trusted-publishers
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
