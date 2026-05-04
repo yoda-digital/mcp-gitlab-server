@@ -1,0 +1,7 @@
+node_modules
+dist
+npm-debug.log
+.git
+.github
+chart
+*.tgz

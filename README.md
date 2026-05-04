@@ -153,6 +153,35 @@ See our [Cursor Integration Guide](./docs/CURSOR_INTEGRATION.md) for step-by-ste
 
 ---
 
+## 🐳 Deploy to Kubernetes
+
+A production-ready Helm chart is included in [`chart/`](./chart/).
+
+```bash
+# Install from OCI registry
+helm install gitlab-mcp oci://ghcr.io/yoda-digital/charts/gitlab-mcp \
+  --set secret.GITLAB_PERSONAL_ACCESS_TOKEN="glpat-xxxxxxxxxxxxxxxxxxxx"
+
+# Or with an existing Secret
+helm install gitlab-mcp oci://ghcr.io/yoda-digital/charts/gitlab-mcp \
+  --set existingSecret=my-gitlab-secret
+
+# Or in OAuth mode (per-connection tokens)
+helm install gitlab-mcp oci://ghcr.io/yoda-digital/charts/gitlab-mcp \
+  --set config.AUTH_MODE=oauth \
+  --set config.CORS_ALLOW_ORIGINS="https://my-app.example.com"
+```
+
+The chart includes:
+- Fail-loud guards (empty token, PDB deadlock detection)
+- Liveness/readiness probes against `/healthz`
+- `values.schema.json` for native Helm validation
+- Support for all v0.4.0 features (OAuth, Streamable HTTP, CORS, session limits)
+
+See [`chart/README.md`](./chart/README.md) for full values reference.
+
+---
+
 ## 🎯 Use Cases
 
 - **AI-Assisted Development** — Let AI create MRs, manage issues, trigger CI/CD
