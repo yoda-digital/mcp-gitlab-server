@@ -1,6 +1,6 @@
 {
   "name": "@yoda.digital/gitlab-mcp-server",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "GitLab MCP Server - A Model Context Protocol server for GitLab integration",
   "main": "dist/index.js",
   "type": "module",
@@ -52,5 +52,8 @@
   "bugs": {
     "url": "https://github.com/yoda-digital/mcp-gitlab-server/issues"
   },
-  "homepage": "https://opensource.yoda.digital/en/projects/mcp-gitlab-server/"
+  "homepage": "https://opensource.yoda.digital/en/projects/mcp-gitlab-server/",
+  "overrides": {
+    "vite": "^8.0.0"
+  }
 }

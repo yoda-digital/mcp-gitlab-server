@@ -9,6 +9,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet. New entries land here between releases._
 
+## [0.3.2] - 2026-05-04
+
+A pure security and infrastructure release. No runtime API changes; the
+server behaves identically to 0.3.1 for its consumers.
+
+### Security
+
+- `npm audit fix` resolved all 14 transitive npm vulnerabilities reported
+  against `0.3.1` (`hono`, `@hono/node-server`, `express-rate-limit`,
+  `path-to-regexp`, `picomatch`, `postcss`, `vite`). Lockfile-only changes.
+- Added `overrides.vite: ^8.0.0` in `package.json` to permanently resolve
+  three high-severity `vite` advisories (GHSA-4w7w-66w2-5vf9,
+  GHSA-v2wj-q39q-566r, GHSA-p9ff-h696-f583) that were inherited via the
+  `vitest` dev tree. `npm audit` now reports zero vulnerabilities.
+- Enabled GitHub Dependabot security updates, secret scanning, and secret
+  scanning push protection on the repository.
+- Confirmed Private Vulnerability Reporting (PRVR) enabled — disclosure
+  channel is https://github.com/yoda-digital/mcp-gitlab-server/security/advisories/new
+
+### Added
+
+- `.github/dependabot.yml` — weekly grouped npm + GitHub Actions + Docker
+  update PRs.
+- `.github/workflows/codeql.yml` — CodeQL static analysis (security-extended
+  + security-and-quality query packs) on push, PR, and weekly schedule.
+- `.github/CODEOWNERS` — review routing for high-impact paths.
+- `.github/PULL_REQUEST_TEMPLATE.md` — pre-merge checklist anchored to
+  `CLAUDE.md` and `ai_code_of_conduct.md`.
+- `.github/ISSUE_TEMPLATE/{bug_report,feature_request,config}.yml` — issue
+  forms scoped to the MCP / GitLab / transport / auth domain. Blank issues
+  disabled; security routes to PRVR, questions route to Discussions.
+- `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1 with project-specific
+  enforcement contact.
+- Branch protection ruleset on `main` (id `15919136`): pull request required,
+  status checks gated (`build-and-test` + `Analyze (javascript-typescript)`),
+  force-push and deletion blocked, linear history required, squash/rebase
+  merges only. Repository admins retain bypass for emergency hotfixes.
+- GitHub release tags `v0.3.0` and `v0.3.1` for previously published
+  versions (the `npm` registry already had them; the GitHub release timeline
+  was empty).
+
+### Changed
+
+- `.github/workflows/publish.yml`:
+  - `actions/checkout@v3` → `@v6`
+  - `actions/setup-node@v3` → `@v6`
+  - `node-version` `20.x` → `22.x` (LTS Iron)
+  - Enabled `npm test` in the `build-and-test` job (vitest is wired)
+  - `npm publish --provenance --access public` — Sigstore-signed npm
+    provenance attestations via GitHub OIDC
+  - Least-privilege `permissions:` blocks at workflow + job level
+- `CLAUDE.md`: corrected the stale "npm test exits with error" note (vitest
+  is wired); added a Security paragraph pointing at PRVR and `SECURITY.md`.
+
+### Removed
+
+- `docs/VISION.md` — superseded; product strategy is tracked elsewhere.
+- Wiki page `Product-Vision-&-Roadmap.md` — was a duplicate of
+  `docs/VISION.md`.
+
 ## [0.3.1] - 2026-05-02
 
 ### Fixed

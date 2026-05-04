@@ -6,6 +6,11 @@ on:
       - main
     paths-ignore:
       - "**.md"
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
   release:
     types: [created]
 
@@ -28,8 +33,11 @@ jobs:
       - run: npm test
 
   publish-npm:
-    # Skip if the commit message contains "update changelog [skip ci]"
-    if: ${{ !contains(github.event.head_commit.message, 'update changelog [skip ci]') }}
+    # Only publish on push to main or release events; skip on PRs and on
+    # changelog-only auto-commits.
+    if: >-
+      github.event_name != 'pull_request' &&
+      !contains(github.event.head_commit.message, 'update changelog [skip ci]')
     needs: build-and-test
     runs-on: ubuntu-latest
     permissions:
