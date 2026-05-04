@@ -39,7 +39,7 @@
     "@types/node": "^20.11.19",
     "@types/node-fetch": "^2.6.12",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.16"
   },
   "engines": {
