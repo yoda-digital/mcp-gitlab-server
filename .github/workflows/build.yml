@@ -1,0 +1,139 @@
+name: "Build & Publish"
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}  # yoda-digital/mcp-gitlab-server
+  CHART_NAME: gitlab-mcp
+
+permissions:
+  contents: read
+  packages: write
+
+# -------------------------------------------------------------------
+# Job 1 — Validate (runs on every push and PR)
+# -------------------------------------------------------------------
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm lint
+        run: |
+          helm lint chart/ \
+            --set secret.GITLAB_PERSONAL_ACCESS_TOKEN=dummy-for-lint
+
+      - name: Helm template smoke test
+        run: |
+          helm template test-release chart/ \
+            --set secret.GITLAB_PERSONAL_ACCESS_TOKEN=dummy-for-lint \
+            > /dev/null
+
+  # -------------------------------------------------------------------
+  # Job 2 — Docker build + push (skipped on PRs)
+  # -------------------------------------------------------------------
+  docker:
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name != 'pull_request'
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # On tag push: v1.2.3 -> 1.2.3 + latest
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            # On main push (no tag): sha-<short>
+            type=sha,prefix=,enable=${{ github.ref_type != 'tag' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # -------------------------------------------------------------------
+  # Job 3 — Helm package + push (only on tags)
+  # -------------------------------------------------------------------
+  helm:
+    runs-on: ubuntu-latest
+    needs: docker
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      - name: Log in to ghcr.io (Helm OCI)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+      - name: Compute version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update appVersion in Chart.yaml
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          yq -i ".appVersion = \"$VERSION\"" chart/Chart.yaml
+          # Verify mutation
+          ACTUAL=$(yq '.appVersion' chart/Chart.yaml)
+          if [[ "$ACTUAL" != "$VERSION" ]]; then
+            echo "::error::appVersion mismatch: expected $VERSION, got $ACTUAL"
+            exit 1
+          fi
+
+      - name: Package chart
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          helm package chart/ \
+            --version "$VERSION" \
+            --destination .helm-pkg/
+
+      - name: Push chart to ghcr.io
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          helm push ".helm-pkg/${{ env.CHART_NAME }}-${VERSION}.tgz" \
+            oci://${{ env.REGISTRY }}/yoda-digital/charts

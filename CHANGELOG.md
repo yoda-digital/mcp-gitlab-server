@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet. New entries land here between releases._
+### Added
+
+- **Dockerfile** — multi-stage production build (`node:24-alpine`), non-root
+  user, read-only rootfs, security-context hardened.
+- **Helm chart** (`chart/`) — Kubernetes-ready deployment with ConfigMap,
+  Secret, ServiceAccount, PodDisruptionBudget, liveness/readiness probes
+  against `/healthz`, and support for `existingSecret`.
+  - Fail-loud guards: empty PAT token without `existingSecret` renders a
+    template error; PDB `minAvailable >= replicaCount` is caught at render
+    time to prevent drain deadlocks.
+  - New config values: `AUTH_MODE`, `USE_STREAMABLE_HTTP`,
+    `CORS_ALLOW_ORIGINS`, `HEALTHZ_MAX_SESSIONS` (from v0.4.0 features).
+- **GitHub Actions CI** (`.github/workflows/build.yml`) — three-job
+  pipeline: _validate_ (hadolint + helm lint + helm template), _docker_
+  (build & push via `docker/metadata-action`), _helm_ (package with
+  `--version` + OCI push). `:latest` tag only on semver releases; PRs run
+  validation only.
 
 ## [0.4.0] - 2026-05-04
 

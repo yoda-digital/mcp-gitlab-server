@@ -1,0 +1,17 @@
+apiVersion: v2
+name: gitlab-mcp
+description: Helm chart for the GitLab MCP Server
+type: application
+version: 0.1.0
+appVersion: "0.4.0"
+
+keywords:
+  - mcp
+  - gitlab
+  - devops
+
+home: https://github.com/yoda-digital/mcp-gitlab-server
+
+maintainers:
+  - name: Yoda Digital
+    url: https://github.com/yoda-digital

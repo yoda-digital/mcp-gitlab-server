@@ -1,0 +1,87 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/yoda-digital/mcp-gitlab-server
+  # -- Image tag. Overridden by CI at package time.
+  # Default "latest" is safe for local helm install; tagged releases use semver.
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+# -- GitLab MCP server configuration (non-sensitive)
+config:
+  PORT: "3000"
+  USE_SSE: "true"
+  USE_STREAMABLE_HTTP: "false"
+  GITLAB_API_URL: "https://gitlab.com/api/v4"
+  GITLAB_READ_ONLY_MODE: "false"
+  # -- Authentication mode: "pat" (default) or "oauth"
+  # "pat"   : static token from GITLAB_PERSONAL_ACCESS_TOKEN env var / existingSecret
+  # "oauth" : per-connection Bearer token forwarded in the Authorization header
+  AUTH_MODE: "pat"
+  # -- Comma-separated list of allowed CORS origins.
+  # In PAT mode: defaults to "*" if empty. In OAuth mode: no default (deny).
+  CORS_ALLOW_ORIGINS: ""
+  # -- Max sessions before /healthz returns 503 (default 10000)
+  HEALTHZ_MAX_SESSIONS: "10000"
+
+# -- Sensitive values injected as env vars from a Secret.
+# Set these or use existingSecret.
+secret:
+  GITLAB_PERSONAL_ACCESS_TOKEN: ""
+
+# -- Use an existing Secret instead of creating one.
+# The Secret must contain the keys listed in secret{} above.
+existingSecret: ""
+
+service:
+  type: ClusterIP
+  port: 3000
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# -- Extra env vars (list of {name, value} or {name, valueFrom})
+extraEnv: []
+
+# -- Extra envFrom (list of secretRef/configMapRef)
+extraEnvFrom: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# -- PodDisruptionBudget (recommended when replicaCount > 1).
+# NOTE: SSE/Streamable HTTP transports hold in-memory session state.
+# Multi-replica requires sticky sessions — see docs/OPERATIONS.md.
+podDisruptionBudget:
+  enabled: false
+  # maxUnavailable: 1 is the safe default — works at any replicaCount.
+  maxUnavailable: 1
+
+podAnnotations: {}
+podLabels: {}
+
+serviceAccount:
+  create: true
+  name: ""
+
+# -- Liveness / readiness probes
+probes:
+  liveness:
+    enabled: true
+    path: /healthz
+    initialDelaySeconds: 5
+    periodSeconds: 30
+  readiness:
+    enabled: true
+    path: /healthz
+    initialDelaySeconds: 3
+    periodSeconds: 10

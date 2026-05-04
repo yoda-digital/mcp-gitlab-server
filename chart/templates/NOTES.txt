@@ -1,0 +1,8 @@
+1. Get the application URL by running these commands:
+{{- if eq .Values.service.type "ClusterIP" }}
+  kubectl port-forward svc/{{ include "gitlab-mcp.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }} -n {{ .Release.Namespace }}
+  echo "MCP endpoint: http://localhost:{{ .Values.service.port }}/sse"
+{{- end }}
+
+2. In-cluster URL for MCP clients:
+   http://{{ include "gitlab-mcp.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}/sse

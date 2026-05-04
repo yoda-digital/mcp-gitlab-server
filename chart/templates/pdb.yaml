@@ -1,0 +1,24 @@
+{{- if and .Values.podDisruptionBudget .Values.podDisruptionBudget.enabled }}
+{{- if and .Values.podDisruptionBudget.minAvailable .Values.podDisruptionBudget.maxUnavailable }}
+  {{- fail "podDisruptionBudget: set EITHER minAvailable OR maxUnavailable, not both — Kubernetes rejects PDBs with both fields at apply time." }}
+{{- end }}
+{{- if and .Values.podDisruptionBudget.minAvailable (le (int .Values.replicaCount) (int .Values.podDisruptionBudget.minAvailable)) }}
+  {{- fail (printf "podDisruptionBudget.minAvailable (%d) >= replicaCount (%d) would deadlock node drains. Use maxUnavailable instead." (int .Values.podDisruptionBudget.minAvailable) (int .Values.replicaCount)) }}
+{{- end }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "gitlab-mcp.fullname" . }}
+  labels:
+    {{- include "gitlab-mcp.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "gitlab-mcp.selectorLabels" . | nindent 6 }}
+{{- end }}
