@@ -30,7 +30,7 @@
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "node-fetch": "^3.3.2",
-    "zod": "^3.22.4",
+    "zod": "^4.4.3",
     "zod-to-json-schema": "^3.22.3"
   },
   "devDependencies": {
