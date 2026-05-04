@@ -1,5 +1,21 @@
 name: Publish Package to npm
 
+# Release-driven publish model:
+# - build-and-test runs on every code event (PR + push to main + release + manual
+#   dispatch). PR-time check satisfies the branch-protection ruleset; the push
+#   trigger is the safety net for admin-bypass merges and post-merge sanity on
+#   Dependabot auto-merges.
+# - publish-npm runs ONLY on a published GitHub Release or a manual
+#   workflow_dispatch. Code landing on main does NOT publish — releases are
+#   deliberate, versioned ceremonies.
+#
+# Why this shape: every commit that touches non-md used to trigger publish-npm,
+# which (a) failed loudly when no version bump (Dependabot patches, doc
+# changes, contributor iterations) and (b) raced with the release event when a
+# release was created for the same SHA. Decoupling code-events from
+# release-events fixes both classes of failure and aligns with the publish flow
+# of mature npm projects (React, Vite, vitest, etc.).
+
 on:
   push:
     branches:
@@ -12,14 +28,18 @@ on:
     paths-ignore:
       - "**.md"
   release:
-    types: [created]
+    types: [published]
+  workflow_dispatch: {}
 
 permissions:
   contents: read
 
 jobs:
   build-and-test:
-    # Skip if the commit message contains "update changelog [skip ci]"
+    # Skip GitHub Actions changelog auto-commits to avoid double-runs on bot
+    # pushes. The condition only meaningfully applies on push events; on PR /
+    # release / dispatch, github.event.head_commit is null, contains() returns
+    # false, and the negation runs the job.
     if: ${{ !contains(github.event.head_commit.message, 'update changelog [skip ci]') }}
     runs-on: ubuntu-latest
     steps:
@@ -33,11 +53,10 @@ jobs:
       - run: npm test
 
   publish-npm:
-    # Only publish on push to main or release events; skip on PRs and on
-    # changelog-only auto-commits.
-    if: >-
-      github.event_name != 'pull_request' &&
-      !contains(github.event.head_commit.message, 'update changelog [skip ci]')
+    # Only publish on a published GitHub Release (deliberate ceremony) or on
+    # manual workflow_dispatch (escape hatch for emergencies). Never on push
+    # or pull_request — those are code events, not release events.
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     needs: build-and-test
     runs-on: ubuntu-latest
     environment:
