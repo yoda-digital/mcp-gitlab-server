@@ -143,31 +143,19 @@ const GITLAB_PERSONAL_ACCESS_TOKEN = process.env.GITLAB_PERSONAL_ACCESS_TOKEN;
 const GITLAB_API_URL = process.env.GITLAB_API_URL || 'https://gitlab.com/api/v4';
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const USE_SSE = process.env.USE_SSE === 'true';
+const USE_STREAMABLE_HTTP = process.env.USE_STREAMABLE_HTTP === 'true';
 const GITLAB_READ_ONLY_MODE = process.env.GITLAB_READ_ONLY_MODE === 'true';
-
-if (!GITLAB_PERSONAL_ACCESS_TOKEN) {
-  console.error("GITLAB_PERSONAL_ACCESS_TOKEN environment variable is not set");
+/**
+ * Authentication mode:
+ *   - "pat"   (default) : static Personal Access Token from GITLAB_PERSONAL_ACCESS_TOKEN env var
+ *   - "oauth" : per-connection Bearer token forwarded in each SSE request Authorization header
+ */
+const AUTH_MODE_RAW = (process.env.AUTH_MODE || 'pat').toLowerCase();
+if (AUTH_MODE_RAW !== 'pat' && AUTH_MODE_RAW !== 'oauth') {
+  console.error(`Invalid AUTH_MODE="${process.env.AUTH_MODE}". Must be "pat" or "oauth".`);
   process.exit(1);
 }
-
-// Server capabilities
-const serverCapabilities: ServerCapabilities = {
-  tools: {}
-};
-
-// Create server
-const server = new Server({
-  name: "gitlab-mcp-server",
-  version: packageJson.version,
-}, {
-  capabilities: serverCapabilities
-});
-
-// Create GitLab API client
-const gitlabApi = new GitLabApi({
-  apiUrl: GITLAB_API_URL,
-  token: GITLAB_PERSONAL_ACCESS_TOKEN
-});
+const AUTH_MODE: 'pat' | 'oauth' = AUTH_MODE_RAW as 'pat' | 'oauth';
 
 // Helper function to convert Zod schema to JSON schema with proper type
 function createJsonSchema(schema: z.ZodType<any>) {
@@ -721,6 +709,26 @@ const ALL_TOOLS = [
     readOnly: false
   },
 ];
+
+/**
+ * Create and configure a new MCP server instance for a given GitLab token.
+ * Called once at startup in PAT mode, or once per SSE connection in OAuth mode.
+ */
+export function createMcpServer(token: string): Server {
+  // Create server
+  const serverCapabilities: ServerCapabilities = { tools: {} };
+  const server = new Server({
+    name: "gitlab-mcp-server",
+    version: packageJson.version,
+  }, {
+    capabilities: serverCapabilities
+  });
+
+  // Create GitLab API client
+  const gitlabApi = new GitLabApi({
+    apiUrl: GITLAB_API_URL,
+    token,
+  });
 
 // Register tool handlers
 server.setRequestHandler(ListToolsRequestSchema, async (): Promise<ListToolsResult> => {
@@ -1835,11 +1843,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
   }
 });
 
+  return server;
+} // end createMcpServer
+
 // Start the server
 async function runServer() {
   try {
-    await setupTransport(server, { port: PORT, useSSE: USE_SSE });
-    console.error(`GitLab MCP Server running with ${USE_SSE ? 'SSE' : 'stdio'} transport`);
+    if (AUTH_MODE === 'oauth') {
+      if (!USE_SSE && !USE_STREAMABLE_HTTP) {
+        console.error("AUTH_MODE=oauth requires USE_SSE=true or USE_STREAMABLE_HTTP=true");
+        process.exit(1);
+      }
+      await setupTransport(null, {
+        port: PORT,
+        useSSE: USE_SSE,
+        useStreamableHttp: USE_STREAMABLE_HTTP,
+        serverFactory: createMcpServer
+      });
+    } else {
+      // PAT mode (default)
+      if (!GITLAB_PERSONAL_ACCESS_TOKEN) {
+        console.error("GITLAB_PERSONAL_ACCESS_TOKEN environment variable is not set");
+        process.exit(1);
+      }
+      const server = createMcpServer(GITLAB_PERSONAL_ACCESS_TOKEN);
+      await setupTransport(server, {
+        port: PORT,
+        useSSE: USE_SSE,
+        useStreamableHttp: USE_STREAMABLE_HTTP,
+      });
+    }
+    const enabledTransports = [
+      USE_SSE ? 'sse' : null,
+      USE_STREAMABLE_HTTP ? 'streamable-http' : null,
+      !USE_SSE && !USE_STREAMABLE_HTTP ? 'stdio' : null,
+    ].filter(Boolean).join(', ');
+    console.error(`GitLab MCP Server running with ${enabledTransports} transport(s) (auth: ${AUTH_MODE})`);
   } catch (error) {
     console.error("Error starting server:", error);
     process.exit(1);

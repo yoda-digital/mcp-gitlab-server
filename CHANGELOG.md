@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet. New entries land here between releases._
+### Added
+
+- **OAuth per-connection authentication** (`AUTH_MODE=oauth`): new
+  `createMcpServer(token)` factory creates isolated Server + GitLabApi
+  instances per connection using the Bearer token from the `Authorization`
+  header. PAT mode (default) is unchanged.
+- **Streamable HTTP transport** (`USE_STREAMABLE_HTTP=true`): implements
+  the MCP Streamable HTTP spec on `POST/GET/DELETE /mcp` with session
+  management via `MCP-Session-Id` header.
+- **CORS origin allowlist** (`CORS_ALLOW_ORIGINS`): restrict allowed
+  origins in OAuth mode; permissive `*` default retained for PAT mode only.
+- `/healthz` endpoint with active session count and configurable
+  threshold (`HEALTHZ_MAX_SESSIONS`) for meaningful Kubernetes probes.
+- `docs/OPERATIONS.md` — operations guide covering health checks,
+  Kubernetes probe configuration, environment variables, and troubleshooting.
 
 ## [0.3.2] - 2026-05-04
 
