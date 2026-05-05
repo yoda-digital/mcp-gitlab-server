@@ -54,10 +54,11 @@ ingress controller with cookie-based routing). See
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | affinity | object | `{}` |  |
-| config | object | `{"AUTH_MODE":"pat","CORS_ALLOW_ORIGINS":"","GITLAB_API_URL":"https://gitlab.com/api/v4","GITLAB_READ_ONLY_MODE":"false","HEALTHZ_MAX_SESSIONS":"10000","PORT":"3000","USE_SSE":"true","USE_STREAMABLE_HTTP":"false"}` | GitLab MCP server configuration (non-sensitive) |
-| config.AUTH_MODE | string | `"pat"` | Authentication mode: "pat" (default) or "oauth" "pat"   : static token from GITLAB_PERSONAL_ACCESS_TOKEN env var / existingSecret "oauth" : per-connection Bearer token forwarded in the Authorization header |
-| config.CORS_ALLOW_ORIGINS | string | `""` | Comma-separated list of allowed CORS origins. In PAT mode: defaults to "*" if empty. In OAuth mode: no default (deny). |
+| config | object | `{"AUTH_MODE":"oauth","CORS_ALLOW_ORIGINS":"","GITLAB_API_URL":"https://gitlab.com/api/v4","GITLAB_READ_ONLY_MODE":"false","HEALTHZ_MAX_SESSIONS":"10000","HOST":"0.0.0.0","PORT":"3000","USE_SSE":"true","USE_STREAMABLE_HTTP":"false"}` | GitLab MCP server configuration (non-sensitive) |
+| config.AUTH_MODE | string | `"oauth"` | Authentication mode: "oauth" (default) or "pat" "oauth" : per-connection Bearer token forwarded in the Authorization header.           This is the only safe mode for cluster-reachable Service exposure. "pat"   : static token from GITLAB_PERSONAL_ACCESS_TOKEN env var / existingSecret.           UNSUPPORTED in Helm — the chart-level guard refuses install because           pods are reachable via Kubernetes Service, which violates the           loopback-only constraint of PAT mode (GHSA-8jr5-6gvj-rfpf). |
+| config.CORS_ALLOW_ORIGINS | string | `""` | Comma-separated list of allowed CORS origins. In PAT-loopback mode: defaults to "*" if empty (local dev only). In OAuth mode: no default (deny browser cross-origin access). |
 | config.HEALTHZ_MAX_SESSIONS | string | `"10000"` | Max sessions before /healthz returns 503 (default 10000) |
+| config.HOST | string | `"0.0.0.0"` | Bind address. Pods must bind to all interfaces for the Service to reach them, so the chart sets HOST=0.0.0.0. Combined with AUTH_MODE=oauth below, network exposure is auth-gated. The application's own default is HOST=127.0.0.1 (loopback) for non-Helm local-dev safety. |
 | existingSecret | string | `""` | Use an existing Secret instead of creating one. The Secret must contain the keys listed in secret{} above. |
 | extraEnv | list | `[]` | Extra env vars (list of {name, value} or {name, valueFrom}) |
 | extraEnvFrom | list | `[]` | Extra envFrom (list of secretRef/configMapRef) |

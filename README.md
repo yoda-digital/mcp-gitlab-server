@@ -81,18 +81,19 @@ For Claude Desktop, Cursor, Zed, and any client that runs MCP servers as a local
 
 Self-hosted? Replace `GITLAB_API_URL` with your instance, e.g. `https://gitlab.example.com/api/v4`. Want a safe demo with no write access? Add `"GITLAB_READ_ONLY_MODE": "true"`. Per-IDE notes are in [`docs/CURSOR_INTEGRATION.md`](./docs/CURSOR_INTEGRATION.md).
 
-### Remote (Streamable HTTP)
+### Remote (Streamable HTTP, OAuth-gated)
 
-For shared deployments and modern remote MCP clients, run the server as an HTTP service:
+For shared deployments and modern remote MCP clients, run the server as an HTTP service. Network-exposed deployments require `AUTH_MODE=oauth` — the server refuses to start with `AUTH_MODE=pat` on a non-loopback bind. See [`SECURITY.md`](./SECURITY.md) for the threat model.
 
 ```bash
 docker run --rm -p 3000:3000 \
-  -e GITLAB_PERSONAL_ACCESS_TOKEN=glpat-… \
+  -e HOST=0.0.0.0 \
+  -e AUTH_MODE=oauth \
   -e USE_STREAMABLE_HTTP=true \
   ghcr.io/yoda-digital/mcp-gitlab-server:latest
 ```
 
-Then point clients at `http://localhost:3000/mcp`. For per-connection OAuth, where each user supplies their own Bearer token, set `AUTH_MODE=oauth` and front the server with a gateway that injects `Authorization: Bearer <token>`.
+Then front the container with a gateway that injects `Authorization: Bearer <token>` per connection — the server forwards that Bearer to GitLab as the per-connection PAT. Point clients at `http://your-gateway/mcp`.
 
 Operational details, probe configuration, and troubleshooting are in [`docs/OPERATIONS.md`](./docs/OPERATIONS.md).
 
@@ -133,11 +134,11 @@ Streamable HTTP runs `POST /mcp`, `GET /mcp`, and `DELETE /mcp`, with session ma
 
 ## Authentication
 
-Two modes. Pick the one that matches your deployment.
+Two modes. The right one depends on whether the HTTP transport is reachable from the network.
 
-PAT mode (the default). The server holds one personal access token in `GITLAB_PERSONAL_ACCESS_TOKEN`. Simple, and the right choice for almost everyone running this locally or as a single-tenant service.
+OAuth per connection (`AUTH_MODE=oauth`, the default for network-exposed deployments). The server holds no static token. Every MCP connection brings its own `Authorization: Bearer <token>`, which the server forwards to GitLab as the effective PAT for that connection. Run it behind a gateway that handles your IdP. This is how you operate one shared deployment for an entire team. Required whenever bind is non-loopback.
 
-OAuth per connection (`AUTH_MODE=oauth`). The server holds nothing. Every MCP connection brings its own `Authorization: Bearer <token>`, which the server forwards to GitLab. Run it behind a gateway that handles your IdP. This is how you operate one shared deployment for an entire team.
+PAT mode (`AUTH_MODE=pat`, loopback only). The server holds one personal access token in `GITLAB_PERSONAL_ACCESS_TOKEN`. The HTTP transport runs **without authentication** in this mode, so the server enforces a loopback-only bind (`HOST=127.0.0.1`) and refuses to start otherwise. Right choice for stdio clients and single-tenant local dev. Not supported in Helm — see the chart's auth-validation guard.
 
 ---
 
@@ -148,11 +149,12 @@ OAuth per connection (`AUTH_MODE=oauth`). The server holds nothing. Every MCP co
 | `GITLAB_PERSONAL_ACCESS_TOKEN` | — | Required in PAT mode. |
 | `GITLAB_API_URL` | `https://gitlab.com/api/v4` | GitLab API base URL. Point at your self-hosted instance if needed. |
 | `GITLAB_READ_ONLY_MODE` | `false` | Hide all write tools. |
-| `AUTH_MODE` | `pat` | `pat` or `oauth`. |
+| `AUTH_MODE` | `pat` | `pat` (loopback only) or `oauth` (any bind). |
+| `HOST` | `127.0.0.1` | Bind address for HTTP transports. Set to `0.0.0.0` to expose to the network — but only with `AUTH_MODE=oauth`, otherwise startup refuses. |
 | `USE_SSE` | `false` | Enable legacy SSE transport. |
 | `USE_STREAMABLE_HTTP` | `false` | Enable MCP Streamable HTTP transport. |
 | `PORT` | `3000` | HTTP listen port for SSE and Streamable HTTP. |
-| `CORS_ALLOW_ORIGINS` | _(empty)_ | Comma-separated allowlist. Empty means `*` in PAT mode and deny in OAuth mode. |
+| `CORS_ALLOW_ORIGINS` | _(empty)_ | Comma-separated allowlist. Empty means `*` in PAT-loopback mode (local dev only); empty in OAuth mode means deny. Wildcard is never emitted on a non-loopback bind. |
 | `HEALTHZ_MAX_SESSIONS` | `10000` | `/healthz` flips to 503 above this threshold. |
 
 `.env.example` ships in the repo for local development.
@@ -172,12 +174,14 @@ Multi-stage build on `node:24-alpine`. Runs as non-root (uid 1000) with all capa
 ### Kubernetes (Helm)
 
 ```bash
-helm install gitlab-mcp oci://ghcr.io/yoda-digital/charts/gitlab-mcp \
-  --set secret.GITLAB_PERSONAL_ACCESS_TOKEN=glpat-…
+helm install gitlab-mcp oci://ghcr.io/yoda-digital/charts/gitlab-mcp
 ```
 
-The chart ships liveness and readiness probes against `/healthz`, an optional `PodDisruptionBudget`, ConfigMap and Secret with rolling-restart annotations, and four fail-loud guards that refuse to render bad configurations:
+The chart defaults to `AUTH_MODE=oauth` so a vanilla install is auth-gated. Front the Service with an Ingress or gateway that injects `Authorization: Bearer <token>` per connection.
 
+The chart ships liveness and readiness probes against `/healthz`, an optional `PodDisruptionBudget`, ConfigMap and Secret with rolling-restart annotations, and five fail-loud guards that refuse to render bad configurations:
+
+- `AUTH_MODE=pat` with non-loopback `HOST` (CWE-306 — see `chart/templates/auth-validation.yaml`)
 - empty PAT in PAT mode without `existingSecret`
 - both `existingSecret` and inline `secret.GITLAB_PERSONAL_ACCESS_TOKEN` set (a silent precedence trap, otherwise)
 - `PDB minAvailable >= replicaCount` (drain deadlock)

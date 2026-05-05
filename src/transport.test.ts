@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { setupTransport } from './transport.js';
+import { setupTransport, isLoopbackHost, requireSafeTransportConfig } from './transport.js';
 import http from 'http';
 
 /**
@@ -204,7 +204,8 @@ describe('Transport — Streamable HTTP session lifecycle', () => {
     const sessionId = initRes.headers['mcp-session-id'] as string;
     expect(sessionId).toBeDefined();
 
-    // Send initialized notification
+    // Send initialized notification — Authorization required on every
+    // existing-session request (sessionId is bound to the originating Bearer).
     const initializedPayload = JSON.stringify({
       jsonrpc: '2.0',
       method: 'notifications/initialized'
@@ -214,12 +215,13 @@ describe('Transport — Streamable HTTP session lifecycle', () => {
       {
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',
-        'MCP-Session-Id': sessionId
+        'MCP-Session-Id': sessionId,
+        Authorization: 'Bearer reuse-token'
       },
       initializedPayload
     );
 
-    // Second: list_tools on same session
+    // Second: list_tools on same session — same Bearer required.
     const listPayload = JSON.stringify({
       jsonrpc: '2.0',
       id: 2,
@@ -231,7 +233,8 @@ describe('Transport — Streamable HTTP session lifecycle', () => {
       {
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',
-        'MCP-Session-Id': sessionId
+        'MCP-Session-Id': sessionId,
+        Authorization: 'Bearer reuse-token'
       },
       listPayload
     );
@@ -269,15 +272,18 @@ describe('Transport — Streamable HTTP session lifecycle', () => {
     const sessionId = initRes.headers['mcp-session-id'] as string;
     expect(sessionId).toBeDefined();
 
-    // DELETE to close the session
+    // DELETE to close the session — Authorization required on every
+    // existing-session request.
     const delRes = await request(
       port, 'DELETE', '/mcp',
-      { 'MCP-Session-Id': sessionId }
+      { 'MCP-Session-Id': sessionId, Authorization: 'Bearer cleanup-token' }
     );
     // 200 or 204 — session terminated
     expect([200, 204]).toContain(delRes.status);
 
-    // Attempt to reuse closed session → should fail
+    // Attempt to reuse closed session → should fail.
+    // Same Bearer used; the server should reject because the session no
+    // longer exists, not because of auth.
     const reusePayload = JSON.stringify({
       jsonrpc: '2.0',
       id: 2,
@@ -289,7 +295,8 @@ describe('Transport — Streamable HTTP session lifecycle', () => {
       {
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/event-stream',
-        'MCP-Session-Id': sessionId
+        'MCP-Session-Id': sessionId,
+        Authorization: 'Bearer cleanup-token'
       },
       reusePayload
     );
@@ -413,6 +420,140 @@ describe('Transport — /healthz endpoint', () => {
     expect(after).toBeGreaterThan(before);
 
     destroy();
+  });
+});
+
+describe('Transport — config safety guards (GHSA-8jr5-6gvj-rfpf)', () => {
+  it('isLoopbackHost recognises loopback variants', () => {
+    expect(isLoopbackHost('127.0.0.1')).toBe(true);
+    expect(isLoopbackHost('::1')).toBe(true);
+    expect(isLoopbackHost('localhost')).toBe(true);
+    expect(isLoopbackHost('::ffff:127.0.0.1')).toBe(true);
+  });
+
+  it('isLoopbackHost rejects network-exposed addresses', () => {
+    expect(isLoopbackHost('0.0.0.0')).toBe(false);
+    expect(isLoopbackHost('192.168.1.5')).toBe(false);
+    expect(isLoopbackHost('10.0.0.1')).toBe(false);
+    expect(isLoopbackHost('::')).toBe(false);
+  });
+
+  it('requireSafeTransportConfig allows stdio (no HTTP)', () => {
+    expect(requireSafeTransportConfig({
+      useSSE: false, useStreamableHttp: false, host: '0.0.0.0', authMode: 'pat'
+    })).toBeNull();
+  });
+
+  it('requireSafeTransportConfig allows PAT mode on loopback', () => {
+    expect(requireSafeTransportConfig({
+      useSSE: true, useStreamableHttp: false, host: '127.0.0.1', authMode: 'pat'
+    })).toBeNull();
+  });
+
+  it('requireSafeTransportConfig allows OAuth on any bind', () => {
+    expect(requireSafeTransportConfig({
+      useSSE: true, useStreamableHttp: false, host: '0.0.0.0', authMode: 'oauth'
+    })).toBeNull();
+    expect(requireSafeTransportConfig({
+      useSSE: false, useStreamableHttp: true, host: '192.168.1.5', authMode: 'oauth'
+    })).toBeNull();
+  });
+
+  it('requireSafeTransportConfig rejects PAT + non-loopback (SSE)', () => {
+    const err = requireSafeTransportConfig({
+      useSSE: true, useStreamableHttp: false, host: '0.0.0.0', authMode: 'pat'
+    });
+    expect(err).not.toBeNull();
+    expect(err).toMatch(/AUTH_MODE=oauth/);
+    expect(err).toMatch(/HOST=127\.0\.0\.1/);
+  });
+
+  it('requireSafeTransportConfig rejects PAT + non-loopback (Streamable HTTP)', () => {
+    const err = requireSafeTransportConfig({
+      useSSE: false, useStreamableHttp: true, host: '10.0.0.1', authMode: 'pat'
+    });
+    expect(err).not.toBeNull();
+  });
+
+  it('setupTransport throws when called with unsafe config (defense in depth)', async () => {
+    process.env.AUTH_MODE = 'pat';
+    await expect(setupTransport(null, {
+      port: 19999,
+      host: '0.0.0.0',
+      useSSE: true,
+      serverFactory: createTestServer,
+    })).rejects.toThrow(/non-loopback/);
+    delete process.env.AUTH_MODE;
+  });
+});
+
+describe('Transport — sessionId-Bearer binding (GHSA-8jr5-6gvj-rfpf)', () => {
+  let port: number;
+
+  beforeAll(async () => {
+    port = 19600 + Math.floor(Math.random() * 200);
+    process.env.AUTH_MODE = 'oauth';
+    process.env.CORS_ALLOW_ORIGINS = '';
+    await setupTransport(null, {
+      port,
+      host: '127.0.0.1',
+      useSSE: true,
+      useStreamableHttp: true,
+      serverFactory: createTestServer,
+    });
+    await new Promise((r) => setTimeout(r, 50));
+  });
+
+  afterAll(() => {
+    delete process.env.AUTH_MODE;
+    delete process.env.CORS_ALLOW_ORIGINS;
+  });
+
+  it('Streamable HTTP: rejects existing session reused with a different Bearer', async () => {
+    // Initialize a session with token-A
+    const initPayload = JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } }
+    });
+    const initRes = await request(port, 'POST', '/mcp', {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+      Authorization: 'Bearer token-A',
+    }, initPayload);
+    expect(initRes.status).toBe(200);
+    const sid = initRes.headers['mcp-session-id'] as string;
+    expect(sid).toBeDefined();
+
+    // Attacker reuses sid with token-B → 401
+    const attackPayload = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+    const attackRes = await request(port, 'POST', '/mcp', {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+      Authorization: 'Bearer token-B',
+      'MCP-Session-Id': sid,
+    }, attackPayload);
+    expect(attackRes.status).toBe(401);
+    expect(attackRes.body).toMatch(/Authorization does not match/);
+  });
+
+  it('Streamable HTTP: rejects existing session reused with no Authorization header', async () => {
+    const initPayload = JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } }
+    });
+    const initRes = await request(port, 'POST', '/mcp', {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+      Authorization: 'Bearer leak-source',
+    }, initPayload);
+    const sid = initRes.headers['mcp-session-id'] as string;
+
+    const attackRes = await request(port, 'POST', '/mcp', {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+      'MCP-Session-Id': sid,
+    }, JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
+    expect(attackRes.status).toBe(401);
   });
 });
 

@@ -9,6 +9,33 @@ Report security vulnerabilities **privately** via GitHub's
 Expected response time: best-effort within 7 days. Coordinated disclosure
 preferred.
 
+## Threat model — auth × bind matrix
+
+The HTTP transports (`USE_SSE`, `USE_STREAMABLE_HTTP`) carry no
+authentication of their own in `AUTH_MODE=pat`. The server's safety
+properties are a function of two axes:
+
+| `AUTH_MODE` | `HOST` (bind) | Outcome |
+|---|---|---|
+| `pat` | `127.0.0.1` (loopback) | OK for single-tenant local dev. Wildcard CORS permitted. No network exposure. |
+| `pat` | non-loopback | **Refused at startup.** Unauthenticated network exposure of a PAT-backed GitLab tool surface (CWE-306). |
+| `oauth` | `127.0.0.1` (loopback) | OK. `Authorization: Bearer` required on every request. |
+| `oauth` | non-loopback | OK for shared deployments. Front with a gateway that handles your IdP and injects `Authorization: Bearer`. |
+
+The Helm chart defaults to `AUTH_MODE=oauth` because a Kubernetes
+Service is by definition cluster-reachable, which means non-loopback
+bind. A chart-level `{{ fail }}` guard refuses install if PAT mode is
+combined with a network-exposed `HOST`.
+
+OAuth-mode sessions are bound to the SHA-256 hash of their originating
+`Authorization: Bearer` header; a leaked `MCP-Session-Id` without the
+original Bearer is rejected with 401.
+
+CORS: the wildcard `Access-Control-Allow-Origin: *` is emitted only on
+the loopback-PAT-empty-allowlist combination. Network-exposed binds
+require an explicit `CORS_ALLOW_ORIGINS` allowlist; otherwise no
+`Allow-Origin` header is set and browsers refuse cross-origin reads.
+
 ## Scope
 
 This server connects to a GitLab instance using a personal access token

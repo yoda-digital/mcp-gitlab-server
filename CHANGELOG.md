@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet. New entries land here between releases._
 
+## [0.6.0] - 2026-05-05
+
+Security release. Closes [GHSA-8jr5-6gvj-rfpf](https://github.com/yoda-digital/mcp-gitlab-server/security/advisories/GHSA-8jr5-6gvj-rfpf) — SSE / Streamable HTTP transports were unauthenticated in default (PAT) mode and bound to all interfaces, exposing all 86 GitLab tools (including write tools) to anyone reachable on the bind. Reported privately by [@dodge1218](https://github.com/dodge1218).
+
+### Breaking changes
+
+- **`HOST` defaults to `127.0.0.1`** (loopback only) for HTTP transports. Set `HOST=0.0.0.0` (or a specific interface) to expose to the network — but only with `AUTH_MODE=oauth`, otherwise startup refuses.
+- **`AUTH_MODE=pat` + non-loopback bind is refused at startup.** The server exits with a fatal error naming the env vars to set. Either bind loopback for local dev, or switch to OAuth mode for shared deployments.
+- **Helm chart `config.AUTH_MODE` default flipped from `pat` to `oauth`.** Pods are reachable via the Kubernetes Service, which is cluster-reachable by design — PAT mode in Helm was the documented vulnerable configuration. A new `chart/templates/auth-validation.yaml` guard refuses install when `AUTH_MODE=pat` is combined with a non-loopback `HOST`.
+- **Wildcard `Access-Control-Allow-Origin: *` is no longer emitted on non-loopback binds**, regardless of `AUTH_MODE`. Network-exposed deployments must set `CORS_ALLOW_ORIGINS` explicitly.
+
+### Security
+
+- **Sessions bound to originating Bearer (CWE-287).** OAuth-mode sessions store the SHA-256 hash of the `Authorization: Bearer` that opened them. Every subsequent request reusing the `MCP-Session-Id` (or SSE `sessionId` query param) must present the same Bearer; a leaked sessionId without the original token is rejected with 401.
+- **Defense-in-depth: `setupTransport` itself refuses to start an unsafe combination**, even if a caller bypasses the `index.ts` startup guard. Same check, two layers.
+- **CORS-on-loopback-only.** Wildcard origin is permitted only when bind is loopback AND `AUTH_MODE=pat` AND `CORS_ALLOW_ORIGINS` is empty. Any other configuration requires an explicit allowlist.
+
+### Added
+
+- New `HOST` environment variable (default `127.0.0.1`).
+- New `chart/templates/auth-validation.yaml` fail-loud guard.
+- New exported helpers in `src/transport.ts`: `isLoopbackHost(host)`, `requireSafeTransportConfig({useSSE, useStreamableHttp, host, authMode})`.
+- New `## Threat model — auth × bind matrix` section in `SECURITY.md`.
+- Tests covering startup-config refusal, sessionId-Bearer binding rejection (wrong Bearer, no Bearer), and the `setupTransport` defense-in-depth path.
+
+### Migration
+
+- **Local stdio clients (Claude Desktop, Cursor, Zed):** no change. Stdio is unaffected.
+- **Local HTTP for development:** no change if you bind loopback (the new default). If your previous setup relied on `0.0.0.0` for cross-machine local-dev access, set `HOST=127.0.0.1` (default) for single-machine, or switch to `AUTH_MODE=oauth` and front it with a gateway.
+- **Docker `docker run -p 3000:3000`:** the in-container bind defaults to `127.0.0.1`, which is not reachable through the port mapping. Set `HOST=0.0.0.0` *and* `AUTH_MODE=oauth`. Update your client URLs to go through your gateway.
+- **Helm `helm install`:** the chart defaults to `AUTH_MODE=oauth` and `HOST=0.0.0.0`. If you were depending on the previous PAT default, the chart's auth-validation guard will refuse install — set `config.AUTH_MODE=oauth` and front the Service with an Ingress that injects `Authorization: Bearer`.
+
+### Credits
+
+[@dodge1218](https://github.com/dodge1218) for the responsible disclosure, the reproducible PoC, the CWE mapping, and the design conversation on the patch shape.
+
 ## [0.5.1] - 2026-05-05
 
 Documentation patch release. No functional code changes from 0.5.0; the

@@ -111,7 +111,7 @@ import {
   DeleteGroupSchema,
 } from './schemas.js';
 import { GitLabApi } from './gitlab-api.js';
-import { setupTransport } from './transport.js';
+import { setupTransport, requireSafeTransportConfig } from './transport.js';
 import {
   formatEventsResponse,
   formatCommitsResponse,
@@ -142,6 +142,13 @@ import { isValidISODate } from './utils.js';
 const GITLAB_PERSONAL_ACCESS_TOKEN = process.env.GITLAB_PERSONAL_ACCESS_TOKEN;
 const GITLAB_API_URL = process.env.GITLAB_API_URL || 'https://gitlab.com/api/v4';
 const PORT = parseInt(process.env.PORT || '3000', 10);
+/**
+ * Bind address for HTTP transports (SSE / Streamable HTTP).
+ * Default: 127.0.0.1 (loopback only). Set to 0.0.0.0 (or a specific
+ * interface) to expose to the network — but only with AUTH_MODE=oauth,
+ * otherwise the server refuses to start (CWE-306 protection).
+ */
+const HOST = process.env.HOST || '127.0.0.1';
 const USE_SSE = process.env.USE_SSE === 'true';
 const USE_STREAMABLE_HTTP = process.env.USE_STREAMABLE_HTTP === 'true';
 const GITLAB_READ_ONLY_MODE = process.env.GITLAB_READ_ONLY_MODE === 'true';
@@ -156,6 +163,19 @@ if (AUTH_MODE_RAW !== 'pat' && AUTH_MODE_RAW !== 'oauth') {
   process.exit(1);
 }
 const AUTH_MODE: 'pat' | 'oauth' = AUTH_MODE_RAW as 'pat' | 'oauth';
+
+// Startup safety gate: refuse to bind an unauthenticated HTTP server to a
+// non-loopback address. CWE-306 / CWE-942 — see SECURITY.md threat model.
+const transportSafetyError = requireSafeTransportConfig({
+  useSSE: USE_SSE,
+  useStreamableHttp: USE_STREAMABLE_HTTP,
+  host: HOST,
+  authMode: AUTH_MODE,
+});
+if (transportSafetyError) {
+  console.error(`FATAL: ${transportSafetyError}`);
+  process.exit(1);
+}
 
 // Helper function to convert Zod schema to JSON schema with proper type
 function createJsonSchema(schema: z.ZodType<any>) {
@@ -1856,6 +1876,7 @@ async function runServer() {
       }
       await setupTransport(null, {
         port: PORT,
+        host: HOST,
         useSSE: USE_SSE,
         useStreamableHttp: USE_STREAMABLE_HTTP,
         serverFactory: createMcpServer
@@ -1869,6 +1890,7 @@ async function runServer() {
       const server = createMcpServer(GITLAB_PERSONAL_ACCESS_TOKEN);
       await setupTransport(server, {
         port: PORT,
+        host: HOST,
         useSSE: USE_SSE,
         useStreamableHttp: USE_STREAMABLE_HTTP,
       });

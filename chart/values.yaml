@@ -13,16 +13,26 @@ fullnameOverride: ""
 # -- GitLab MCP server configuration (non-sensitive)
 config:
   PORT: "3000"
+  # -- Bind address. Pods must bind to all interfaces for the Service to
+  # reach them, so the chart sets HOST=0.0.0.0. Combined with AUTH_MODE=oauth
+  # below, network exposure is auth-gated. The application's own default is
+  # HOST=127.0.0.1 (loopback) for non-Helm local-dev safety.
+  HOST: "0.0.0.0"
   USE_SSE: "true"
   USE_STREAMABLE_HTTP: "false"
   GITLAB_API_URL: "https://gitlab.com/api/v4"
   GITLAB_READ_ONLY_MODE: "false"
-  # -- Authentication mode: "pat" (default) or "oauth"
-  # "pat"   : static token from GITLAB_PERSONAL_ACCESS_TOKEN env var / existingSecret
-  # "oauth" : per-connection Bearer token forwarded in the Authorization header
-  AUTH_MODE: "pat"
+  # -- Authentication mode: "oauth" (default) or "pat"
+  # "oauth" : per-connection Bearer token forwarded in the Authorization header.
+  #           This is the only safe mode for cluster-reachable Service exposure.
+  # "pat"   : static token from GITLAB_PERSONAL_ACCESS_TOKEN env var / existingSecret.
+  #           UNSUPPORTED in Helm — the chart-level guard refuses install because
+  #           pods are reachable via Kubernetes Service, which violates the
+  #           loopback-only constraint of PAT mode (GHSA-8jr5-6gvj-rfpf).
+  AUTH_MODE: "oauth"
   # -- Comma-separated list of allowed CORS origins.
-  # In PAT mode: defaults to "*" if empty. In OAuth mode: no default (deny).
+  # In PAT-loopback mode: defaults to "*" if empty (local dev only).
+  # In OAuth mode: no default (deny browser cross-origin access).
   CORS_ALLOW_ORIGINS: ""
   # -- Max sessions before /healthz returns 503 (default 10000)
   HEALTHZ_MAX_SESSIONS: "10000"

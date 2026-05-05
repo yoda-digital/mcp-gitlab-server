@@ -33,6 +33,10 @@
       "description": "Non-sensitive environment variables injected via ConfigMap. Keys become env var names.",
       "properties": {
         "PORT": { "type": "string", "pattern": "^[0-9]+$" },
+        "HOST": {
+          "type": "string",
+          "description": "Bind address. The chart sets '0.0.0.0' by default so the Kubernetes Service can route to the pod. Combined with AUTH_MODE=oauth (default) this is auth-gated. Setting AUTH_MODE=pat requires HOST=127.0.0.1 — see chart/templates/auth-validation.yaml."
+        },
         "USE_SSE": { "type": "string", "enum": ["true", "false"] },
         "USE_STREAMABLE_HTTP": { "type": "string", "enum": ["true", "false"] },
         "GITLAB_API_URL": { "type": "string", "format": "uri" },

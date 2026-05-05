@@ -2,13 +2,53 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import { parse } from "url";
 
 /**
+ * Loopback detection — used to gate the unauthenticated PAT-mode default.
+ * A non-loopback bind in PAT mode is treated as fatal misconfiguration
+ * because the transport carries no auth check on /sse or /messages.
+ */
+export function isLoopbackHost(host: string): boolean {
+  return host === '127.0.0.1'
+    || host === '::1'
+    || host === 'localhost'
+    || host === '::ffff:127.0.0.1';
+}
+
+/**
+ * Validates the transport configuration before any HTTP server starts.
+ * Returns a non-null error message when the combination is unsafe.
+ *
+ * Rule: HTTP transports (SSE / Streamable HTTP) bound to a non-loopback
+ * interface must run with AUTH_MODE=oauth. A PAT-mode HTTP server on
+ * 0.0.0.0 (or any LAN-reachable address) is unauthenticated and exposes
+ * the operator's GitLab PAT to anyone who can reach the port.
+ */
+export function requireSafeTransportConfig(opts: {
+  useSSE: boolean;
+  useStreamableHttp: boolean;
+  host: string;
+  authMode: string;
+}): string | null {
+  if (!opts.useSSE && !opts.useStreamableHttp) return null;
+  if (isLoopbackHost(opts.host)) return null;
+  if (opts.authMode === 'oauth') return null;
+  return (
+    `HTTP transport on non-loopback bind (HOST=${opts.host}) requires AUTH_MODE=oauth. ` +
+    `Set HOST=127.0.0.1 for single-tenant local dev, or set AUTH_MODE=oauth and front the ` +
+    `server with a gateway that injects Authorization: Bearer.`
+  );
+}
+
+/**
  * CORS origin allowlist parsed from CORS_ALLOW_ORIGINS env var.
- * - When empty AND AUTH_MODE=pat: permissive `*` (single-tenant local dev).
+ * - When empty AND AUTH_MODE=pat AND bind is loopback: permissive `*` (local dev).
+ * - When empty AND AUTH_MODE=pat AND bind is non-loopback: no Allow-Origin header.
+ *   (The startup guard refuses this combination, but the CORS path also defends
+ *   in case the guard is bypassed in tests or future refactors.)
  * - When empty AND AUTH_MODE=oauth: no Allow-Origin header (deny browser access).
  * - When set: only listed origins receive the Allow-Origin header.
  *
@@ -24,13 +64,36 @@ function getAuthModeEnv(): string {
 }
 
 /**
+ * SHA-256 hash of a Bearer token. Used to bind a session to its
+ * originating Authorization header without storing the raw token in memory.
+ */
+function hashBearer(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+function extractBearer(req: IncomingMessage): string | null {
+  const authHeader = req.headers["authorization"];
+  const headerStr = Array.isArray(authHeader) ? authHeader[0] : (authHeader || "");
+  const match = headerStr.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : null;
+}
+
+/**
  * Transport configuration options
  */
 export interface TransportOptions {
   /**
-   * Port to use for SSE transport (default: 3000)
+   * Port to use for HTTP transport (default: 3000)
    */
   port?: number;
+
+  /**
+   * Bind address for HTTP transport.
+   * Default: "127.0.0.1" (loopback only). Use "0.0.0.0" or a specific
+   * interface address to expose to the network — but only with
+   * AUTH_MODE=oauth, otherwise the server refuses to start.
+   */
+  host?: string;
 
   /**
    * Whether to use SSE transport (default: false, uses stdio)
@@ -63,21 +126,64 @@ export async function setupTransport(
   server: Server | null,
   options: TransportOptions = {}
 ): Promise<void> {
-  const { port = 3000, useSSE = false, useStreamableHttp = false, serverFactory } = options;
+  const {
+    port = 3000,
+    host = '127.0.0.1',
+    useSSE = false,
+    useStreamableHttp = false,
+    serverFactory,
+  } = options;
 
-  const getSessionServer = (req: IncomingMessage): Server | null => {
+  // Defense in depth: even if a caller bypasses the index.ts startup guard,
+  // refuse to bind an unauthenticated HTTP server to a non-loopback address.
+  const configError = requireSafeTransportConfig({
+    useSSE,
+    useStreamableHttp,
+    host,
+    authMode: getAuthModeEnv(),
+  });
+  if (configError) {
+    throw new Error(`Refusing to start transport: ${configError}`);
+  }
+
+  /**
+   * sessionId → SHA-256(originating Bearer token).
+   * Populated at session creation in OAuth mode; consulted on every
+   * subsequent request that re-uses the sessionId. A leaked sessionId
+   * without the original Bearer is unusable.
+   *
+   * In PAT mode (serverFactory absent), no entries are stored, so the
+   * lookup short-circuits and behaves as before.
+   */
+  const sessionBearerHashes: Map<string, string> = new Map();
+
+  /**
+   * Build the per-connection MCP Server and capture the Bearer hash if
+   * we're in OAuth mode. Returns null when the request is unauthenticated
+   * in OAuth mode (caller should respond 401).
+   */
+  const buildSessionContext = (
+    req: IncomingMessage
+  ): { server: Server; bearerHash: string | null } | null => {
     if (!serverFactory) {
-      // PAT mode: reuse the single pre-built server.
-      return server;
+      return server ? { server, bearerHash: null } : null;
     }
+    const token = extractBearer(req);
+    if (!token) return null;
+    return { server: serverFactory(token), bearerHash: hashBearer(token) };
+  };
 
-    // OAuth mode: extract Bearer token from Authorization header.
-    const authHeader = req.headers["authorization"] || "";
-    const match = authHeader.match(/^Bearer\s+(.+)$/i);
-    if (!match) {
-      return null;
-    }
-    return serverFactory(match[1].trim());
+  /**
+   * In OAuth mode, every request that uses an existing sessionId must
+   * present the same Bearer that opened the session. Returns true when
+   * the session is unbound (PAT mode) or when the hash matches.
+   */
+  const sessionBearerMatches = (sessionId: string, req: IncomingMessage): boolean => {
+    const expectedHash = sessionBearerHashes.get(sessionId);
+    if (!expectedHash) return true; // PAT mode session → no hash to match
+    const token = extractBearer(req);
+    if (!token) return false;
+    return hashBearer(token) === expectedHash;
   };
 
   if (useSSE || useStreamableHttp) {
@@ -88,7 +194,7 @@ export async function setupTransport(
 
     // Create raw HTTP server
     const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-      // CORS handling — restrict origins in OAuth mode
+      // CORS handling — wildcard only on loopback in PAT mode; allowlist otherwise.
       const corsOrigins = getCorsAllowedOrigins();
       const authMode = getAuthModeEnv();
       const requestOrigin = req.headers.origin;
@@ -97,8 +203,9 @@ export async function setupTransport(
         res.setHeader('Access-Control-Allow-Origin', requestOrigin);
         res.setHeader('Vary', 'Origin');
         corsAllowed = true;
-      } else if (corsOrigins.length === 0 && authMode === 'pat') {
-        // Single-tenant local dev — keep permissive default
+      } else if (corsOrigins.length === 0 && authMode === 'pat' && isLoopbackHost(host)) {
+        // Loopback-only convenience for single-tenant local dev. Never
+        // emit wildcard `*` on a network-exposed bind, even in PAT mode.
         res.setHeader('Access-Control-Allow-Origin', '*');
         corsAllowed = true;
       }
@@ -137,6 +244,13 @@ export async function setupTransport(
           if (sessionId) {
             const existingTransport = transports[sessionId];
             if (existingTransport instanceof StreamableHTTPServerTransport) {
+              // OAuth-mode sessions are bound to the originating Bearer hash;
+              // a leaked sessionId without the original Bearer is rejected here.
+              if (!sessionBearerMatches(sessionId, req)) {
+                res.writeHead(401, { 'Content-Type': 'text/plain' });
+                res.end('Unauthorized: Authorization does not match the Bearer that opened this session');
+                return;
+              }
               transport = existingTransport;
             } else if (existingTransport) {
               res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -165,8 +279,8 @@ export async function setupTransport(
           }
 
           if (!transport && req.method === 'POST') {
-            const sessionServer = getSessionServer(req);
-            if (!sessionServer) {
+            const ctx = buildSessionContext(req);
+            if (!ctx) {
               res.writeHead(401, { 'Content-Type': 'text/plain' });
               res.end('Unauthorized: missing or invalid Authorization: Bearer <token> header');
               return;
@@ -178,6 +292,9 @@ export async function setupTransport(
               onsessioninitialized: (sid: string) => {
                 initializedSid = sid;
                 transports[sid] = newTransport;
+                if (ctx.bearerHash) {
+                  sessionBearerHashes.set(sid, ctx.bearerHash);
+                }
               }
             });
 
@@ -185,14 +302,18 @@ export async function setupTransport(
               const sid = newTransport.sessionId;
               if (sid && transports[sid] === newTransport) {
                 delete transports[sid];
+                sessionBearerHashes.delete(sid);
               }
             };
 
             try {
-              await sessionServer.connect(newTransport);
+              await ctx.server.connect(newTransport);
             } catch (connectError) {
               // Clean up if connect fails — onsessioninitialized may have fired
-              if (initializedSid) delete transports[initializedSid];
+              if (initializedSid) {
+                delete transports[initializedSid];
+                sessionBearerHashes.delete(initializedSid);
+              }
               try { await newTransport.close?.(); } catch { /* best-effort */ }
               throw connectError;
             }
@@ -221,9 +342,8 @@ export async function setupTransport(
             return;
           }
 
-          // Determine which server instance to use for this connection
-          const sessionServer = getSessionServer(req);
-          if (!sessionServer) {
+          const ctx = buildSessionContext(req);
+          if (!ctx) {
             res.writeHead(401, { 'Content-Type': 'text/plain' });
             res.end('Unauthorized: missing or invalid Authorization: Bearer <token> header');
             return;
@@ -236,6 +356,7 @@ export async function setupTransport(
           const cleanupSse = () => {
             if (transports[sseTransport.sessionId] === sseTransport) {
               delete transports[sseTransport.sessionId];
+              sessionBearerHashes.delete(sseTransport.sessionId);
             }
           };
 
@@ -246,8 +367,11 @@ export async function setupTransport(
           sseTransport.onclose = cleanupSse;
 
           // Connect the server to the transport — only register on success
-          await sessionServer.connect(sseTransport);
+          await ctx.server.connect(sseTransport);
           transports[sseTransport.sessionId] = sseTransport;
+          if (ctx.bearerHash) {
+            sessionBearerHashes.set(sseTransport.sessionId, ctx.bearerHash);
+          }
         }
         else if (req.method === 'POST' && pathname === '/messages') {
           if (!useSSE) {
@@ -262,6 +386,14 @@ export async function setupTransport(
           if (!(transport instanceof SSEServerTransport)) {
             res.writeHead(400);
             res.end('No transport found for sessionId');
+            return;
+          }
+
+          // OAuth-mode sessions: require the same Bearer that opened /sse.
+          // PAT-mode sessions are unbound and pass through (sessionBearerMatches returns true).
+          if (!sessionBearerMatches(sessionId, req)) {
+            res.writeHead(401, { 'Content-Type': 'text/plain' });
+            res.end('Unauthorized: Authorization does not match the Bearer that opened this session');
             return;
           }
 
@@ -281,9 +413,9 @@ export async function setupTransport(
       }
     });
 
-    // Start the server
-    httpServer.listen(port, () => {
-      console.error(`SSE server listening on port ${port}`);
+    // Start the server on the configured host (default 127.0.0.1).
+    httpServer.listen(port, host, () => {
+      console.error(`MCP HTTP transport listening on ${host}:${port}`);
     });
   } else {
     // Set up stdio transport (PAT mode only — server is always provided)

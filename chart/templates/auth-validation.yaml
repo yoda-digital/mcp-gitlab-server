@@ -1,0 +1,21 @@
+{{- /*
+Fail-loud guard for AUTH_MODE=pat in Helm deployments.
+
+Pods running this chart are reachable via the Kubernetes Service (and
+potentially via Ingress/LoadBalancer). PAT mode treats the HTTP transport
+as unauthenticated and is safe only on a loopback bind. Inside a pod that
+must bind to 0.0.0.0 for the Service to route to it, PAT mode is
+unauthenticated network exposure — exactly the configuration described
+in advisory GHSA-8jr5-6gvj-rfpf.
+
+If an operator explicitly opts into PAT mode (e.g. for a single-node
+cluster with sticky-session ingress that handles auth upstream), they
+must also explicitly bind loopback (HOST=127.0.0.1), which makes the pod
+unreachable via a normal Service — a deliberate "are you sure" friction.
+*/ -}}
+{{- if eq .Values.config.AUTH_MODE "pat" }}
+  {{- $host := .Values.config.HOST | default "0.0.0.0" }}
+  {{- if and (ne $host "127.0.0.1") (ne $host "::1") (ne $host "localhost") }}
+    {{- fail (printf "AUTH_MODE=pat requires HOST=127.0.0.1 (loopback). Current HOST=%q would expose an unauthenticated GitLab tool surface to anyone who can reach the pod (CWE-306). Set config.AUTH_MODE=oauth and front the Service with a gateway that injects Authorization: Bearer, or set config.HOST=127.0.0.1 if you accept the loopback-only Service trade-off." $host) }}
+  {{- end }}
+{{- end }}
