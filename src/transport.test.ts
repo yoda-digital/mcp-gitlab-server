@@ -428,14 +428,35 @@ describe('Transport — config safety guards (GHSA-8jr5-6gvj-rfpf)', () => {
     expect(isLoopbackHost('127.0.0.1')).toBe(true);
     expect(isLoopbackHost('::1')).toBe(true);
     expect(isLoopbackHost('localhost')).toBe(true);
+    expect(isLoopbackHost('LOCALHOST')).toBe(true);    // case-insensitive
+    expect(isLoopbackHost('Localhost')).toBe(true);
     expect(isLoopbackHost('::ffff:127.0.0.1')).toBe(true);
+  });
+
+  it('isLoopbackHost covers the entire 127.0.0.0/8 IPv4 range', () => {
+    // `127.x.y.z` for any x,y,z is loopback on Linux/macOS — operators
+    // sometimes pick non-127.0.0.1 addresses to dodge port conflicts.
+    expect(isLoopbackHost('127.0.0.2')).toBe(true);
+    expect(isLoopbackHost('127.5.6.7')).toBe(true);
+    expect(isLoopbackHost('127.255.255.254')).toBe(true);
+    expect(isLoopbackHost('::ffff:127.5.6.7')).toBe(true);
   });
 
   it('isLoopbackHost rejects network-exposed addresses', () => {
     expect(isLoopbackHost('0.0.0.0')).toBe(false);
     expect(isLoopbackHost('192.168.1.5')).toBe(false);
     expect(isLoopbackHost('10.0.0.1')).toBe(false);
+    expect(isLoopbackHost('128.0.0.1')).toBe(false);   // off-by-one from 127/8
     expect(isLoopbackHost('::')).toBe(false);
+    expect(isLoopbackHost('::ffff:192.168.1.5')).toBe(false);
+  });
+
+  it('isLoopbackHost rejects malformed/garbage input', () => {
+    expect(isLoopbackHost('')).toBe(false);
+    expect(isLoopbackHost('not-an-address')).toBe(false);
+    expect(isLoopbackHost('127')).toBe(false);
+    expect(isLoopbackHost('127.0.0.1.5')).toBe(false);
+    expect(isLoopbackHost('999.999.999.999')).toBe(false);
   });
 
   it('requireSafeTransportConfig allows stdio (no HTTP)', () => {

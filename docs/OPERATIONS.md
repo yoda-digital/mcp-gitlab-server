@@ -29,14 +29,25 @@ readinessProbe:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `3000` | HTTP listen port |
+| `HOST` | `127.0.0.1` | Bind address. Set to `0.0.0.0` to expose to the network — requires `AUTH_MODE=oauth`, otherwise startup refuses (GHSA-8jr5-6gvj-rfpf). |
 | `USE_SSE` | `false` | Enable legacy SSE transport |
 | `USE_STREAMABLE_HTTP` | `false` | Enable MCP Streamable HTTP transport |
-| `AUTH_MODE` | `pat` | `pat` or `oauth` |
+| `AUTH_MODE` | `pat` (app default) / `oauth` (chart default) | `pat` requires loopback bind. `oauth` accepts any bind and validates `Authorization: Bearer` per request, with sessionId bound to the originating Bearer hash. |
 | `GITLAB_API_URL` | `https://gitlab.com/api/v4` | GitLab API base URL |
 | `GITLAB_PERSONAL_ACCESS_TOKEN` | — | Required in `pat` mode |
 | `GITLAB_READ_ONLY_MODE` | `false` | Restrict to read-only tools |
-| `CORS_ALLOW_ORIGINS` | — | Comma-separated allowed origins (empty = `*` in PAT mode, deny in OAuth mode) |
+| `CORS_ALLOW_ORIGINS` | — | Comma-separated allowed origins. Empty = `*` only when `AUTH_MODE=pat` AND bind is loopback. Network-exposed binds require an explicit allowlist or get no `Allow-Origin` header. |
 | `HEALTHZ_MAX_SESSIONS` | `10000` | Session count threshold for unhealthy status |
+
+## Auth × bind matrix
+
+The HTTP transports carry no authentication of their own in `AUTH_MODE=pat`. The server's safety properties are a function of two axes — see `SECURITY.md` for the full threat model.
+
+| `AUTH_MODE` | `HOST` | Outcome |
+|---|---|---|
+| `pat` | loopback (127.0.0.0/8, ::1, localhost) | OK for local dev. Wildcard CORS permitted. |
+| `pat` | non-loopback | Refused at startup. CWE-306 / CWE-942. |
+| `oauth` | any | OK. `Authorization: Bearer` required on every request. SessionId bound to SHA-256 of the originating Bearer; reuse with a different (or missing) Bearer is rejected with 401. |
 
 ## Troubleshooting
 

@@ -22,8 +22,9 @@ Security release. Closes [GHSA-8jr5-6gvj-rfpf](https://github.com/yoda-digital/m
 
 ### Security
 
-- **Sessions bound to originating Bearer (CWE-287).** OAuth-mode sessions store the SHA-256 hash of the `Authorization: Bearer` that opened them. Every subsequent request reusing the `MCP-Session-Id` (or SSE `sessionId` query param) must present the same Bearer; a leaked sessionId without the original token is rejected with 401.
+- **Sessions bound to originating Bearer (CWE-287).** OAuth-mode sessions store the SHA-256 hash of the `Authorization: Bearer` that opened them. Every subsequent request reusing the `MCP-Session-Id` (or SSE `sessionId` query param) must present the same Bearer; a leaked sessionId without the original token is rejected with 401. Comparison uses `crypto.timingSafeEqual` to prevent a timing-oracle attack against the stored hash.
 - **Defense-in-depth: `setupTransport` itself refuses to start an unsafe combination**, even if a caller bypasses the `index.ts` startup guard. Same check, two layers.
+- **Loopback detection covers the full IPv4 `127.0.0.0/8` range** (not just `127.0.0.1`), plus `::1`, `::ffff:127.x.y.z`, and case-insensitive `localhost`. Operators who pick a non-`127.0.0.1` loopback address for port-conflict reasons are still safe; the safety guard correctly identifies them as loopback.
 - **CORS-on-loopback-only.** Wildcard origin is permitted only when bind is loopback AND `AUTH_MODE=pat` AND `CORS_ALLOW_ORIGINS` is empty. Any other configuration requires an explicit allowlist.
 
 ### Added

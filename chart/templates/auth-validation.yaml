@@ -8,14 +8,19 @@ must bind to 0.0.0.0 for the Service to route to it, PAT mode is
 unauthenticated network exposure — exactly the configuration described
 in advisory GHSA-8jr5-6gvj-rfpf.
 
-If an operator explicitly opts into PAT mode (e.g. for a single-node
-cluster with sticky-session ingress that handles auth upstream), they
-must also explicitly bind loopback (HOST=127.0.0.1), which makes the pod
-unreachable via a normal Service — a deliberate "are you sure" friction.
+The loopback check matches the runtime check in src/transport.ts:
+covers the full IPv4 loopback range (127.0.0.0/8 — 127.x.y.z), the IPv6
+loopback ::1, and the case-insensitive hostname `localhost`. A naive
+equality check on `127.0.0.1` alone would have missed an operator
+binding to 127.5.6.7 for port-conflict reasons.
 */ -}}
 {{- if eq .Values.config.AUTH_MODE "pat" }}
   {{- $host := .Values.config.HOST | default "0.0.0.0" }}
-  {{- if and (ne $host "127.0.0.1") (ne $host "::1") (ne $host "localhost") }}
-    {{- fail (printf "AUTH_MODE=pat requires HOST=127.0.0.1 (loopback). Current HOST=%q would expose an unauthenticated GitLab tool surface to anyone who can reach the pod (CWE-306). Set config.AUTH_MODE=oauth and front the Service with a gateway that injects Authorization: Bearer, or set config.HOST=127.0.0.1 if you accept the loopback-only Service trade-off." $host) }}
+  {{- $isLoopback := false }}
+  {{- if regexMatch "^127\\.[0-9]+\\.[0-9]+\\.[0-9]+$" $host }}{{- $isLoopback = true }}{{- end }}
+  {{- if eq $host "::1" }}{{- $isLoopback = true }}{{- end }}
+  {{- if regexMatch "(?i)^localhost$" $host }}{{- $isLoopback = true }}{{- end }}
+  {{- if not $isLoopback }}
+    {{- fail (printf "AUTH_MODE=pat requires HOST in the 127.0.0.0/8 loopback range (or ::1, or localhost). Current HOST=%q would expose an unauthenticated GitLab tool surface to anyone who can reach the pod (CWE-306). Set config.AUTH_MODE=oauth and front the Service with a gateway that injects Authorization: Bearer, or set config.HOST=127.0.0.1 if you accept the loopback-only Service trade-off." $host) }}
   {{- end }}
 {{- end }}

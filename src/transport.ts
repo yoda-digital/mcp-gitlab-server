@@ -2,20 +2,36 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createHash, randomUUID } from "crypto";
+import { createHash, randomUUID, timingSafeEqual } from "crypto";
 import { createServer, IncomingMessage, ServerResponse } from "http";
+import { isIPv4, isIPv6 } from "net";
 import { parse } from "url";
 
 /**
  * Loopback detection — used to gate the unauthenticated PAT-mode default.
  * A non-loopback bind in PAT mode is treated as fatal misconfiguration
  * because the transport carries no auth check on /sse or /messages.
+ *
+ * Covers the full IPv4 loopback range (127.0.0.0/8 — `127.1.2.3` is just
+ * as loopback as `127.0.0.1` on Linux/macOS), the IPv6 loopback `::1`,
+ * IPv4-mapped IPv6 loopback (`::ffff:127.x.y.z`), and the case-insensitive
+ * hostname `localhost`. A naive equality check on `127.0.0.1` alone would
+ * have missed an operator binding to `127.5.6.7` for port-conflict reasons.
  */
 export function isLoopbackHost(host: string): boolean {
-  return host === '127.0.0.1'
-    || host === '::1'
-    || host === 'localhost'
-    || host === '::ffff:127.0.0.1';
+  if (host.toLowerCase() === 'localhost') return true;
+  if (isIPv4(host)) {
+    return host.startsWith('127.');
+  }
+  if (isIPv6(host)) {
+    if (host === '::1') return true;
+    // Mixed-notation IPv4-mapped IPv6: ::ffff:127.x.y.z
+    const v4Mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(host);
+    if (v4Mapped && isIPv4(v4Mapped[1])) {
+      return v4Mapped[1].startsWith('127.');
+    }
+  }
+  return false;
 }
 
 /**
@@ -177,13 +193,22 @@ export async function setupTransport(
    * In OAuth mode, every request that uses an existing sessionId must
    * present the same Bearer that opened the session. Returns true when
    * the session is unbound (PAT mode) or when the hash matches.
+   *
+   * Comparison uses crypto.timingSafeEqual to prevent a timing-based
+   * oracle attack against the stored hash (both hashes are 32-byte
+   * SHA-256 digests rendered as 64-char hex; we compare the raw bytes).
    */
   const sessionBearerMatches = (sessionId: string, req: IncomingMessage): boolean => {
     const expectedHash = sessionBearerHashes.get(sessionId);
     if (!expectedHash) return true; // PAT mode session → no hash to match
     const token = extractBearer(req);
     if (!token) return false;
-    return hashBearer(token) === expectedHash;
+    const actualHash = hashBearer(token);
+    if (actualHash.length !== expectedHash.length) return false;
+    return timingSafeEqual(
+      Buffer.from(actualHash, 'hex'),
+      Buffer.from(expectedHash, 'hex')
+    );
   };
 
   if (useSSE || useStreamableHttp) {
