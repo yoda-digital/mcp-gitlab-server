@@ -5,7 +5,7 @@ All notable changes to `@yoda.digital/gitlab-mcp-server` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.1] - Unreleased
 
 ### Added
 
@@ -15,6 +15,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Includes the new `auth-validation.yaml` guard from #58 (GHSA-8jr5-6gvj-rfpf).
 - `chart/values.yaml` documentation comment block listing all six guards,
   their source template, and the CI-matched error substring.
+- **Dockerfile: `HEALTHCHECK` directive** — plain Docker / Compose / Swarm
+  deployments now get built-in liveness via `wget /healthz`.
+- **Helm chart: `image.digest` support** — `values.yaml` + schema +
+  deployment template accept an optional `image.digest` field that takes
+  precedence over `image.tag` when set.
+
+### Changed
+
+- **Dockerfile: digest-pin base image** — both `FROM node:24-alpine` stages
+  now use `@sha256:…` digest pinning. Dependabot `docker` ecosystem (already
+  configured) keeps the pin current automatically.
+- **Dockerfile: `COPY --chown=node:node`** — replaces the `RUN chown -R`
+  layer with native BuildKit ownership. `USER node` is set before `npm ci`
+  so `node_modules/` are owned by `node:node` by construction.
+- **Dockerfile: `HEALTHCHECK --start-period` bumped to 10s** — accommodates
+  cold-start on constrained pods (`resources.requests.cpu: 50m`).
 
 ## [0.6.0] - 2026-05-05
 

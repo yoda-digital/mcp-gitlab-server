@@ -41,6 +41,13 @@ The chart includes render-time validation:
 - **Empty PAT token** — fails if `AUTH_MODE=pat` with no token and no `existingSecret`.
 - **PDB deadlock** — fails if `minAvailable >= replicaCount` (would block node drains).
 - **Mutual exclusion** — fails if both `existingSecret` and inline `secret.GITLAB_PERSONAL_ACCESS_TOKEN` are set.
+- **PAT non-loopback** — fails if `AUTH_MODE=pat` with a non-loopback `HOST` (GHSA-8jr5-6gvj-rfpf).
+
+## Image pinning
+
+When `image.digest` is set (e.g. `sha256:abc123...`), the deployment uses
+`repository@digest` and the `image.tag` value is ignored. This allows
+deterministic rollouts without mutable tags. If both are set, digest wins.
 
 ## Multi-replica considerations
 
@@ -63,6 +70,7 @@ ingress controller with cookie-based routing). See
 | extraEnv | list | `[]` | Extra env vars (list of {name, value} or {name, valueFrom}) |
 | extraEnvFrom | list | `[]` | Extra envFrom (list of secretRef/configMapRef) |
 | fullnameOverride | string | `""` |  |
+| image.digest | string | `""` | Image digest (sha256:...). When set, takes precedence over tag. |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"ghcr.io/yoda-digital/mcp-gitlab-server"` |  |
 | image.tag | string | `"latest"` | Image tag. Overridden by CI at package time. Default "latest" is safe for local helm install; tagged releases use semver. |

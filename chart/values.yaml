@@ -22,6 +22,8 @@ image:
   # -- Image tag. Overridden by CI at package time.
   # Default "latest" is safe for local helm install; tagged releases use semver.
   tag: "latest"
+  # -- Image digest (sha256:...). When set, takes precedence over tag.
+  digest: ""
   pullPolicy: IfNotPresent
 
 nameOverride: ""

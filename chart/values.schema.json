@@ -20,6 +20,11 @@
           "type": "string",
           "description": "Image tag. Overridden by CI at package time."
         },
+        "digest": {
+          "type": "string",
+          "pattern": "^$|^sha256:[a-f0-9]{64}$",
+          "description": "Image digest (sha256:...). When set, takes precedence over tag."
+        },
         "pullPolicy": {
           "type": "string",
           "enum": ["Always", "IfNotPresent", "Never"]
