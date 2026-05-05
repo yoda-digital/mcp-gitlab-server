@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Helm chart: `image.digest` support** — `values.yaml` + schema +
   deployment template accept an optional `image.digest` field that takes
   precedence over `image.tag` when set.
+- **`/livez` endpoint** — always returns `200 {"status":"ok"}` regardless of
+  session count. Intended for Kubernetes `livenessProbe`.
+- **`/readyz` endpoint** — returns 503 when session count exceeds
+  `HEALTHZ_MAX_SESSIONS`. Intended for Kubernetes `readinessProbe`.
 
 ### Changed
 
@@ -31,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so `node_modules/` are owned by `node:node` by construction.
 - **Dockerfile: `HEALTHCHECK --start-period` bumped to 10s** — accommodates
   cold-start on constrained pods (`resources.requests.cpu: 50m`).
+- **Helm chart probe defaults** — `probes.liveness.path` now defaults to
+  `/livez`, `probes.readiness.path` to `/readyz`.
+
+### Deprecated
+
+- **`/healthz`** — retained as alias of `/readyz` for backward compatibility.
+  Will be removed in 0.7.0. Note: the alias inherits the new `>=` threshold
+  semantic from `/readyz` (was `>` in 0.6.0). An operator at exactly
+  `HEALTHZ_MAX_SESSIONS` sessions now sees 503 where 0.6.0 returned 200.
 
 ## [0.6.0] - 2026-05-05
 

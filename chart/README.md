@@ -79,7 +79,7 @@ ingress controller with cookie-based routing). See
 | podAnnotations | object | `{}` |  |
 | podDisruptionBudget | object | `{"enabled":false,"maxUnavailable":1}` | PodDisruptionBudget (recommended when replicaCount > 1). NOTE: SSE/Streamable HTTP transports hold in-memory session state. Multi-replica requires sticky sessions — see docs/OPERATIONS.md. |
 | podLabels | object | `{}` |  |
-| probes | object | `{"liveness":{"enabled":true,"initialDelaySeconds":5,"path":"/healthz","periodSeconds":30},"readiness":{"enabled":true,"initialDelaySeconds":3,"path":"/healthz","periodSeconds":10}}` | Liveness / readiness probes |
+| probes | object | `{"liveness":{"enabled":true,"initialDelaySeconds":5,"path":"/livez","periodSeconds":30},"readiness":{"enabled":true,"initialDelaySeconds":3,"path":"/readyz","periodSeconds":10}}` | Liveness / readiness probes |
 | replicaCount | int | `1` |  |
 | resources.limits.cpu | string | `"500m"` |  |
 | resources.limits.memory | string | `"256Mi"` |  |

@@ -42,6 +42,6 @@ ENV NODE_ENV=production \
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://127.0.0.1:${PORT:-3000}/healthz || exit 1
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1:${PORT:-3000}/livez || exit 1
 
 ENTRYPOINT ["node", "dist/index.js"]

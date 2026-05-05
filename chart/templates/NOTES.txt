@@ -6,3 +6,7 @@
 
 2. In-cluster URL for MCP clients:
    http://{{ include "gitlab-mcp.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}/sse
+
+3. Health probes:
+   Liveness:  /livez
+   Readiness: /readyz

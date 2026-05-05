@@ -10,7 +10,7 @@ import http from 'http';
  * - Streamable HTTP session lifecycle
  * - Cross-protocol session collision
  * - CORS origin handling
- * - /healthz endpoint
+ * - /livez, /readyz, /healthz endpoints
  */
 
 // Helper: make HTTP request and return response
@@ -380,7 +380,7 @@ describe('Transport — cross-protocol session collision', () => {
   });
 });
 
-describe('Transport — /healthz endpoint', () => {
+describe('Transport — /livez, /readyz, /healthz endpoints', () => {
   let port: number;
 
   beforeAll(async () => {
@@ -397,7 +397,22 @@ describe('Transport — /healthz endpoint', () => {
     delete process.env.CORS_ALLOW_ORIGINS;
   });
 
-  it('returns 200 with status ok and session count', async () => {
+  it('/livez returns 200 unconditionally', async () => {
+    const res = await request(port, 'GET', '/livez');
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('ok');
+  });
+
+  it('/readyz returns 200 with status ok and session count', async () => {
+    const res = await request(port, 'GET', '/readyz');
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('ok');
+    expect(typeof body.sessions).toBe('number');
+  });
+
+  it('/healthz is retained as alias of /readyz', async () => {
     const res = await request(port, 'GET', '/healthz');
     expect(res.status).toBe(200);
     const body = JSON.parse(res.body);
@@ -405,17 +420,57 @@ describe('Transport — /healthz endpoint', () => {
     expect(typeof body.sessions).toBe('number');
   });
 
-  it('returns incremented session count after SSE connection', async () => {
-    // Get baseline
-    const beforeRes = await request(port, 'GET', '/healthz');
+  it('/readyz returns 503 when sessions exceed HEALTHZ_MAX_SESSIONS', async () => {
+    const orig = process.env.HEALTHZ_MAX_SESSIONS;
+    process.env.HEALTHZ_MAX_SESSIONS = '0'; // force overflow
+
+    const res = await request(port, 'GET', '/readyz');
+    expect(res.status).toBe(503);
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('unhealthy');
+    expect(body.reason).toBe('session_limit_exceeded');
+
+    // restore
+    if (orig) process.env.HEALTHZ_MAX_SESSIONS = orig;
+    else delete process.env.HEALTHZ_MAX_SESSIONS;
+  });
+
+  it('/livez returns 200 even when sessions exceed HEALTHZ_MAX_SESSIONS', async () => {
+    const orig = process.env.HEALTHZ_MAX_SESSIONS;
+    process.env.HEALTHZ_MAX_SESSIONS = '0'; // force overflow
+
+    const res = await request(port, 'GET', '/livez');
+    expect(res.status).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('ok');
+
+    if (orig) process.env.HEALTHZ_MAX_SESSIONS = orig;
+    else delete process.env.HEALTHZ_MAX_SESSIONS;
+  });
+
+  it('/healthz also returns 503 when sessions exceed HEALTHZ_MAX_SESSIONS', async () => {
+    const orig = process.env.HEALTHZ_MAX_SESSIONS;
+    process.env.HEALTHZ_MAX_SESSIONS = '0';
+
+    const res = await request(port, 'GET', '/healthz');
+    expect(res.status).toBe(503);
+    const body = JSON.parse(res.body);
+    expect(body.status).toBe('unhealthy');
+    expect(body.reason).toBe('session_limit_exceeded');
+
+    if (orig) process.env.HEALTHZ_MAX_SESSIONS = orig;
+    else delete process.env.HEALTHZ_MAX_SESSIONS;
+  });
+
+  it('/readyz returns incremented session count after SSE connection', async () => {
+    const beforeRes = await request(port, 'GET', '/readyz');
     const before = JSON.parse(beforeRes.body).sessions;
 
-    // Open an SSE connection (PAT mode — reuses single server)
     const { status, destroy } = await requestStatus(port, 'GET', '/sse');
     expect(status).toBe(200);
     await new Promise((r) => setTimeout(r, 50));
 
-    const afterRes = await request(port, 'GET', '/healthz');
+    const afterRes = await request(port, 'GET', '/readyz');
     const after = JSON.parse(afterRes.body).sessions;
     expect(after).toBeGreaterThan(before);
 

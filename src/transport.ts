@@ -266,16 +266,25 @@ export async function setupTransport(
       const { pathname, query } = parse(req.url || '', true);
 
       try {
-        if (req.method === 'GET' && pathname === '/healthz') {
+        // --- Health endpoints ---------------------------------------------------
+        if (req.method === 'GET' && pathname === '/livez') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'ok' }));
+          return;
+        }
+
+        // /healthz is a deprecated alias of /readyz; removed in 0.7.0.
+        if (req.method === 'GET' && (pathname === '/readyz' || pathname === '/healthz')) {
           const sessionCount = Object.keys(transports).length;
           const maxSessions = parseInt(process.env.HEALTHZ_MAX_SESSIONS || '10000', 10);
-          if (sessionCount > maxSessions) {
+          if (sessionCount >= maxSessions) {
             res.writeHead(503, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ status: 'unhealthy', reason: 'session_limit_exceeded', sessions: sessionCount }));
             return;
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ status: 'ok', sessions: sessionCount }));
+          return;
         }
         else if (useStreamableHttp && pathname === '/mcp' && (req.method === 'GET' || req.method === 'POST' || req.method === 'DELETE')) {
           const sessionIdHeader = req.headers['mcp-session-id'];

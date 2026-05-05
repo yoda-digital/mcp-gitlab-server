@@ -2,23 +2,42 @@
 
 ## Health Checks
 
-The `/healthz` endpoint returns:
+Three health endpoints are exposed:
+
+| Endpoint | Purpose | Probe mapping |
+| --- | --- | --- |
+| `/livez` | Always returns 200 if the HTTP server is responsive. | `livenessProbe` |
+| `/readyz` | Returns 503 when session count exceeds `HEALTHZ_MAX_SESSIONS`. | `readinessProbe` |
+| `/healthz` | **Deprecated** alias of `/readyz`. Will be removed in a future release. | — |
+
+### `/livez`
+
+- Always `200 OK` with `{"status":"ok"}`.
+- Use for liveness: the event loop is alive and the server can serve HTTP.
+
+### `/readyz`
 
 - `200 OK` with `{"status":"ok","sessions":<n>}` when healthy.
 - `503 Service Unavailable` with `{"status":"unhealthy","reason":"session_limit_exceeded","sessions":<n>}` when active sessions exceed `HEALTHZ_MAX_SESSIONS` (default: 10000).
+- Use for readiness: the pod should be removed from the service rotation (no restart) when overloaded.
+
+### `/healthz` (deprecated)
+
+Alias of `/readyz`. Retained for backward compatibility during the 0.6.x cycle.
+Will be removed in 0.7.0.
 
 ### Kubernetes Probe Configuration
 
 ```yaml
 livenessProbe:
   httpGet:
-    path: /healthz
+    path: /livez
     port: 3000
   initialDelaySeconds: 5
   periodSeconds: 30
 readinessProbe:
   httpGet:
-    path: /healthz
+    path: /readyz
     port: 3000
   initialDelaySeconds: 3
   periodSeconds: 10
@@ -61,7 +80,7 @@ The HTTP transports carry no authentication of their own in `AUTH_MODE=pat`. The
 Active sessions are stored in-memory. If session count grows unbounded:
 
 1. Check that clients are properly closing SSE connections or sending `DELETE /mcp`.
-2. Consider lowering `HEALTHZ_MAX_SESSIONS` and adding a horizontal pod autoscaler based on the `/healthz` response.
+2. Consider lowering `HEALTHZ_MAX_SESSIONS` and adding a horizontal pod autoscaler based on the `/readyz` response.
 
 ### CORS errors in browser console
 
