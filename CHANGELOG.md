@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Nothing yet. New entries land here between releases._
 
+## [0.5.1] - 2026-05-05
+
+Documentation patch release. No functional code changes from 0.5.0; the
+npm package republishes solely to refresh the README displayed on the
+npm package page (npm freezes the README to whatever ships in the
+publish tarball, so an updated README requires a new version).
+
+### Documentation
+
+- **README rewrite (#54)** — replaces the 0.3-era marketing-style README.
+  New version covers what shipped in 0.4.0 / 0.5.0: 86 tools, three
+  transports (stdio / SSE / Streamable HTTP), PAT and OAuth modes,
+  Docker plus Helm with fail-loud guards, supply-chain posture, and
+  contributor credits for PR #42 and PR #44.
+- **Tool-surface accuracy** — bullets aligned with current `src/index.ts`:
+  dropped `archive` (no such tool); corrected CRUD claims for issues,
+  labels, milestones, and protected branches.
+- **Doc layout** — `CURSOR_INTEGRATION.md` moved to `docs/` (links
+  updated); removed `README-old.md`, `AGENTS.md`, and `tools/`.
+
 ## [0.5.0] - 2026-05-04
 
 A packaging and operations release: container image, Helm chart, and
