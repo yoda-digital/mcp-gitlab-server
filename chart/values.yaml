@@ -1,5 +1,22 @@
 replicaCount: 1
 
+# ===========================================================================
+# Fail-loud guards
+# ===========================================================================
+# The chart templates include validation guards that abort with a clear error
+# message when values are misconfigured. CI runs negative tests to ensure
+# these guards are not accidentally removed during refactoring.
+#
+#   Guard                    Template              Expected error substring
+#   ~~~~~~~~~~~~~~~~~~~~~~~~ ~~~~~~~~~~~~~~~~~~~~~ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#   Empty PAT in pat mode    secret.yaml           GITLAB_PERSONAL_ACCESS_TOKEN is required when AUTH_MODE=pat
+#   PDB deadlock             pdb.yaml              would deadlock node drains
+#   Secret conflict          secret.yaml           Set EITHER existingSecret OR secret.GITLAB_PERSONAL_ACCESS_TOKEN
+#   PDB both fields          pdb.yaml              set EITHER minAvailable OR maxUnavailable
+#   Invalid AUTH_MODE        schema.json           values don't meet the specifications
+#   PAT non-loopback host    auth-validation.yaml  AUTH_MODE=pat requires HOST
+# ===========================================================================
+
 image:
   repository: ghcr.io/yoda-digital/mcp-gitlab-server
   # -- Image tag. Overridden by CI at package time.

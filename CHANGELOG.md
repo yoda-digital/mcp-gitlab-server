@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet. New entries land here between releases._
+### Added
+
+- **CI: negative tests for chart fail-loud guards (#48)** — the `validate`
+  job now runs `helm template` with six deliberately broken value sets and
+  asserts each guard fires (non-zero exit + expected error substring).
+  Includes the new `auth-validation.yaml` guard from #58 (GHSA-8jr5-6gvj-rfpf).
+- `chart/values.yaml` documentation comment block listing all six guards,
+  their source template, and the CI-matched error substring.
 
 ## [0.6.0] - 2026-05-05
 

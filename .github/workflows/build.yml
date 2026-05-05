@@ -45,6 +45,65 @@ jobs:
             --set secret.GITLAB_PERSONAL_ACCESS_TOKEN=dummy-for-lint \
             > /dev/null
 
+      - name: Negative tests — fail-loud guards
+        run: |
+          set +e
+          FAIL=0
+          run_negative() {
+            local name="$1"; local expected="$2"; shift 2
+            OUT=$(helm template t chart/ "$@" 2>&1)
+            RC=$?
+            if [[ $RC -eq 0 ]]; then
+              echo "::error::$name: expected failure, got success"
+              FAIL=1; return
+            fi
+            if ! grep -qi "$expected" <<< "$OUT"; then
+              echo "::error::$name: expected message '$expected' not in output"
+              echo "::error::$name: actual output: $OUT"
+              FAIL=1; return
+            fi
+            echo "::notice::$name OK"
+          }
+
+          # Guard 1: empty PAT in pat mode without existingSecret
+          run_negative "empty-pat-token" "GITLAB_PERSONAL_ACCESS_TOKEN is required when AUTH_MODE=pat" \
+            --set config.AUTH_MODE=pat \
+            --set config.HOST=127.0.0.1 \
+            --set secret.GITLAB_PERSONAL_ACCESS_TOKEN=""
+
+          # Guard 2: PDB minAvailable >= replicaCount (deadlock)
+          run_negative "pdb-deadlock" "would deadlock node drains" \
+            --set secret.GITLAB_PERSONAL_ACCESS_TOKEN=ok \
+            --set podDisruptionBudget.enabled=true \
+            --set podDisruptionBudget.minAvailable=1 \
+            --set podDisruptionBudget.maxUnavailable=null \
+            --set replicaCount=1
+
+          # Guard 3: both existingSecret and inline token
+          run_negative "secret-conflict" "Set EITHER existingSecret OR secret.GITLAB_PERSONAL_ACCESS_TOKEN" \
+            --set existingSecret=my-secret \
+            --set secret.GITLAB_PERSONAL_ACCESS_TOKEN=tok
+
+          # Guard 4: PDB both minAvailable and maxUnavailable
+          run_negative "pdb-both-fields" "set EITHER minAvailable OR maxUnavailable" \
+            --set secret.GITLAB_PERSONAL_ACCESS_TOKEN=ok \
+            --set podDisruptionBudget.enabled=true \
+            --set podDisruptionBudget.minAvailable=1 \
+            --set podDisruptionBudget.maxUnavailable=1
+
+          # Guard 5: invalid AUTH_MODE (rejected by values.schema.json)
+          run_negative "invalid-auth-mode" "values don't meet the specifications" \
+            --set secret.GITLAB_PERSONAL_ACCESS_TOKEN=ok \
+            --set config.AUTH_MODE=invalid
+
+          # Guard 6: PAT mode on non-loopback host (GHSA-8jr5-6gvj-rfpf)
+          run_negative "pat-non-loopback" "AUTH_MODE=pat requires HOST" \
+            --set config.AUTH_MODE=pat \
+            --set config.HOST=0.0.0.0 \
+            --set secret.GITLAB_PERSONAL_ACCESS_TOKEN=ok
+
+          if [[ $FAIL -ne 0 ]]; then exit 1; fi
+
       - name: Install helm-docs
         run: |
           curl -sL https://github.com/norwoodj/helm-docs/releases/download/v1.14.2/helm-docs_1.14.2_Linux_x86_64.tar.gz \
