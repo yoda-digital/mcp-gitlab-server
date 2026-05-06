@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet. New entries land here between releases._
+### Fixed
+
+- **Wiki attachment upload uses `multipart/form-data`** — the `upload_wiki_attachment`
+  tool was sending JSON with base64 content, causing a 400 from GitLab. Now uses
+  `FormData` + `Blob` as required by the GitLab API. Response schema corrected to
+  match actual API output (`link.url`, `link.markdown`). (#62)
+- **Per-session server factory in PAT + streamable-http mode** — a single `Server`
+  instance was shared across all streamable-http sessions, causing state corruption
+  and crashes. The `serverFactory` closure pattern (already used for OAuth) is now
+  applied to PAT mode when `USE_SSE` or `USE_STREAMABLE_HTTP` is set. (#62)
 
 ## [0.7.1] - 2026-05-18
 
