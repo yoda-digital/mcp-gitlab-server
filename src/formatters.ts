@@ -234,16 +234,14 @@ export function formatWikiPageResponse(wikiPage: GitLabWikiPage) {
  * @returns A formatted response object for the MCP tool
  */
 export function formatWikiAttachmentResponse(attachment: GitLabWikiAttachment) {
-  // Format the attachment data
   const formattedAttachment = {
     file_name: attachment.file_name,
     file_path: attachment.file_path,
     branch: attachment.branch,
-    commit_id: attachment.commit_id,
-    url: attachment.url
+    url: attachment.link.url,
+    markdown: attachment.link.markdown
   };
 
-  // Return the formatted response
   return {
     content: [
       { type: "text", text: `Wiki Attachment: ${attachment.file_name}` },
