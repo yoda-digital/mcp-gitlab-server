@@ -1,0 +1,26 @@
+{
+  "name": "@yoda.digital/gitlab-mcp-server-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end tests for GitLab MCP Server — verifies all tools against a live GitLab instance via MCP protocol",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "provision": "tsx src/scripts/provision-fixtures.ts",
+    "teardown": "tsx src/scripts/teardown-fixtures.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.9.0",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "tsx": "^4.19.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.16"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

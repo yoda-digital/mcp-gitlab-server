@@ -1,0 +1,242 @@
+# ---------------------------------------------------------------------------
+# E2E tests — GitLab MCP Server
+#
+# Triggered AFTER the "Build & Publish" workflow completes. Uses the Docker
+# image already built by build.yml — no duplicate builds.
+#
+# Trigger model:
+#   - workflow_run: fires after build.yml. Gates itself:
+#       • main → always run
+#       • branch → only if commit message had [e2e]
+#   - workflow_dispatch: manual trigger (uses latest main image)
+#
+# GitLab CE uses a pre-warmed image (built by warm-gitlab.yml) for faster boot.
+# ---------------------------------------------------------------------------
+name: E2E Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'MCP image tag to test (default: latest)'
+        default: 'latest'
+        type: string
+  workflow_run:
+    workflows: ["Build & Publish"]
+    types: [completed]
+
+jobs:
+  # -------------------------------------------------------------------
+  # Gate — decide whether to run E2E
+  # -------------------------------------------------------------------
+  should-run:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success')
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+      image-tag: ${{ steps.check.outputs.image_tag }}
+    steps:
+      - name: Check trigger conditions
+        id: check
+        env:
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "image_tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+            echo "✅ Manual dispatch — using tag: ${{ inputs.image_tag }}"
+          elif [[ "$HEAD_BRANCH" == "main" ]]; then
+            SHA7="${HEAD_SHA::7}"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "image_tag=sha-${SHA7}" >> "$GITHUB_OUTPUT"
+            echo "✅ Main branch — using tag: sha-${SHA7}"
+          elif echo "$HEAD_MESSAGE" | grep -qF '[e2e]'; then
+            SHA7="${HEAD_SHA::7}"
+            BRANCH_SAFE=$(echo "$HEAD_BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-50)
+            TAG="${BRANCH_SAFE}-${SHA7}"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "image_tag=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "✅ Branch with [e2e] — using tag: ${TAG}"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "image_tag=" >> "$GITHUB_OUTPUT"
+            echo "⏭️ Skipping E2E — no [e2e] keyword in commit message"
+          fi
+
+  # -------------------------------------------------------------------
+  # Run E2E tests against ephemeral GitLab CE + MCP from Docker
+  # -------------------------------------------------------------------
+  e2e:
+    name: End-to-end tests
+    needs: should-run
+    if: needs.should-run.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    env:
+      GITLAB_URL: http://localhost:8080
+      GITLAB_ROOT_PASSWORD: 'E2eTestPassword1!'
+      MCP_SERVER_URL: http://localhost:3000
+      MCP_IMAGE: ghcr.io/${{ github.repository }}:${{ needs.should-run.outputs.image-tag }}
+      E2E_IMAGE: ghcr.io/${{ github.repository }}-e2e:${{ needs.should-run.outputs.image-tag }}
+      GITLAB_WARM_IMAGE: ghcr.io/${{ github.repository }}/gitlab-ce-warm:latest
+      GITLAB_COLD_IMAGE: gitlab/gitlab-ce:latest
+
+    steps:
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull MCP and E2E images
+        run: |
+          echo "📦 Pulling MCP server image: $MCP_IMAGE"
+          docker pull "$MCP_IMAGE"
+          echo "📦 Pulling E2E test runner image: $E2E_IMAGE"
+          docker pull "$E2E_IMAGE"
+
+      - name: Pull GitLab image (warm or cold fallback)
+        id: gitlab-image
+        run: |
+          echo "🔍 Trying pre-warmed GitLab image..."
+          if docker pull "$GITLAB_WARM_IMAGE" 2>/dev/null; then
+            echo "⚡ Using pre-warmed GitLab image"
+            echo "image=$GITLAB_WARM_IMAGE" >> "$GITHUB_OUTPUT"
+            echo "warm=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "📦 Warm image not available, pulling cold GitLab CE..."
+            docker pull "$GITLAB_COLD_IMAGE"
+            echo "image=$GITLAB_COLD_IMAGE" >> "$GITHUB_OUTPUT"
+            echo "warm=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Start GitLab CE container
+        run: |
+          # external_url uses port 80 inside container to avoid nginx/puma conflict.
+          # Host maps 8080 → container 80. GITLAB_URL env uses localhost:8080.
+          OMNIBUS_CONFIG="
+            external_url 'http://gitlab.local';
+            gitlab_rails['initial_root_password'] = '${{ env.GITLAB_ROOT_PASSWORD }}';
+            gitlab_rails['monitoring_whitelist'] = ['0.0.0.0/0', '::/0'];
+            prometheus_monitoring['enable'] = false;
+            registry['enable'] = false;
+            sidekiq['concurrency'] = 2;
+            puma['worker_processes'] = 1;
+            puma['min_threads'] = 1;
+            puma['max_threads'] = 2;
+            postgresql['shared_buffers'] = '128MB';
+            postgresql['max_connections'] = 50;
+            gitlab_rails['gitlab_shell_ssh_port'] = 2222;
+          "
+
+          docker run -d \
+            --name gitlab \
+            --shm-size 1g \
+            --tmpfs /var/log/gitlab:rw,noexec,nosuid,size=256m \
+            -p 8080:80 \
+            -e GITLAB_OMNIBUS_CONFIG="$OMNIBUS_CONFIG" \
+            "${{ steps.gitlab-image.outputs.image }}"
+
+          echo "✅ GitLab container started (warm=${{ steps.gitlab-image.outputs.warm }})"
+
+      - name: Wait for GitLab readiness
+        run: |
+          if [[ "${{ steps.gitlab-image.outputs.warm }}" == "true" ]]; then
+            BUDGET=300  # 5 min for warm image
+            echo "⏳ Waiting for GitLab (warm image — expecting ~2 min)..."
+          else
+            BUDGET=900  # 15 min for cold image
+            echo "⏳ Waiting for GitLab (cold image — expecting ~8-12 min)..."
+          fi
+
+          SECONDS=0
+          until curl -sf http://localhost:8080/-/readiness > /dev/null 2>&1; do
+            if [ $SECONDS -gt $BUDGET ]; then
+              echo "❌ GitLab did not become ready within budget (${BUDGET}s)"
+              docker logs gitlab --tail 80
+              exit 1
+            fi
+            sleep 5
+            echo "   ...waiting (${SECONDS}s elapsed)"
+          done
+          echo "✅ GitLab is ready (took ${SECONDS}s)"
+
+      - name: Provision GitLab fixtures (via E2E image)
+        run: |
+          mkdir -p fixtures && chmod 777 fixtures
+          docker run --rm --network host \
+            -e GITLAB_URL=${{ env.GITLAB_URL }} \
+            -e GITLAB_ROOT_PASSWORD=${{ env.GITLAB_ROOT_PASSWORD }} \
+            -v ${{ github.workspace }}/fixtures:/app/fixtures \
+            "$E2E_IMAGE" provision
+
+      - name: Start MCP server (from Docker image)
+        run: |
+          GITLAB_TOKEN=$(jq -r .token fixtures/fixtures.json)
+
+          docker run -d \
+            --name mcp-server \
+            --network host \
+            -e PORT=3000 \
+            -e USE_STREAMABLE_HTTP=true \
+            -e GITLAB_PERSONAL_ACCESS_TOKEN="$GITLAB_TOKEN" \
+            -e GITLAB_API_URL=http://localhost:8080/api/v4 \
+            -e NODE_ENV=test \
+            "$MCP_IMAGE"
+
+          echo "⏳ Waiting for MCP server..."
+          timeout 30 bash -c '
+            until curl -sf http://localhost:3000/livez > /dev/null 2>&1; do
+              sleep 1
+            done
+          '
+          echo "✅ MCP server is ready"
+
+      - name: Run E2E tests (via E2E image)
+        run: |
+          mkdir -p reports && chmod 777 reports
+          docker run --rm --network host \
+            -e MCP_SERVER_URL=${{ env.MCP_SERVER_URL }} \
+            -e GITLAB_URL=${{ env.GITLAB_URL }} \
+            -e GITLAB_ROOT_PASSWORD=${{ env.GITLAB_ROOT_PASSWORD }} \
+            -v ${{ github.workspace }}/fixtures:/app/fixtures \
+            -v ${{ github.workspace }}/reports:/app/reports \
+            "$E2E_IMAGE" test
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-report
+          path: reports/
+          retention-days: 7
+
+      - name: Teardown fixtures (via E2E image)
+        if: always()
+        run: |
+          docker run --rm --network host \
+            -e GITLAB_URL=${{ env.GITLAB_URL }} \
+            -e GITLAB_ROOT_PASSWORD=${{ env.GITLAB_ROOT_PASSWORD }} \
+            -v ${{ github.workspace }}/fixtures:/app/fixtures \
+            "$E2E_IMAGE" teardown || true
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          echo "=== MCP Server logs ==="
+          docker logs mcp-server --tail 50 2>&1 || true
+          echo ""
+          echo "=== GitLab logs ==="
+          docker logs gitlab --tail 50 2>&1 || true
+
+      - name: Stop containers
+        if: always()
+        run: |
+          docker rm -f mcp-server 2>/dev/null || true
+          docker rm -f gitlab 2>/dev/null || true
