@@ -18,7 +18,7 @@
  * - merge_merge_request
  */
 import { describe, it, expect } from 'vitest';
-import { extractJson, extractText } from '../helpers/types.js';
+import { extractJson } from '../helpers/types.js';
 
 describe('Merge Request tools', () => {
   it('list_merge_requests — returns the provisioned MR', async () => {

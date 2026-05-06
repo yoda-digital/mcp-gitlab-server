@@ -22,6 +22,7 @@ async function teardown() {
     return;
   }
 
+  // lgtm[js/file-access-to-http] — intentional: reading test fixtures token for cleanup
   const fixtures: Fixtures = JSON.parse(readFileSync(fixturePath, 'utf-8'));
 
   console.log('🧹 Tearing down GitLab fixtures...');
