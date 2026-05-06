@@ -29,12 +29,12 @@ EXCLUDED_TOOLS=(
 
 # 1. Extract all tool names from source (case statements in index.ts)
 mapfile -t SOURCE_TOOLS < <(
-  grep -oP 'case "([^"]+)"' "$ROOT_DIR/src/index.ts" | sed 's/case "//;s/"//' | sort -u
+  grep -o 'case "[^"]*"' "$ROOT_DIR/src/index.ts" | sed 's/case "//;s/"//' | sort -u
 )
 
 # 2. Extract all tool names called in E2E tests
 mapfile -t TESTED_TOOLS < <(
-  grep -rohP "name:\s*'([^']+)'" "$ROOT_DIR/e2e/src/tests/" | sed "s/name: '//;s/'//" | sort -u
+  grep -roh "name: '[^']*'" "$ROOT_DIR/e2e/src/tests/" | sed "s/name: '//;s/'//" | sort -u
 )
 
 # 3. Find uncovered tools
