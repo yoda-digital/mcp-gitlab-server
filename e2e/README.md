@@ -16,11 +16,38 @@ every tool against a real, ephemeral GitLab CE instance — no mocks.
 │  └──────────────┘                            │ GitLab API   │
 │                                              ▼              │
 │                              ┌───────────────────────────┐  │
-│                              │  GitLab CE (service)      │  │
+│                              │  GitLab CE (pre-warmed)   │  │
 │                              │  Ephemeral — fresh state  │  │
 │                              └───────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+## CI Pipeline Overview
+
+Three workflows collaborate:
+
+| Workflow | File | Purpose |
+|----------|------|---------|
+| **Build & Publish** | `build.yml` | Builds MCP + E2E Docker images, validates, pushes to ghcr.io |
+| **E2E Tests** | `e2e.yml` | Boots GitLab CE, runs E2E against the built images |
+| **Warm GitLab** | `warm-gitlab.yml` | Pre-warms GitLab CE image (weekly + on-demand) |
+
+### Trigger chain
+
+```text
+push to main → build.yml (validate + docker) → e2e.yml (auto-triggered via workflow_run)
+```
+
+For branches, add `[e2e]` or `[build]` to the commit message to trigger the chain.
+
+### Tool Coverage Gate
+
+`scripts/check-tool-coverage.sh` runs during the `validate` job in `build.yml`.
+It extracts all MCP tool case statements from `src/index.ts` and verifies each
+tool has at least one call in `e2e/src/tests/`. The build fails immediately if a
+tool is added without test coverage.
+
+Premium-only tools (group wiki) are excluded via a whitelist in the script.
 
 ## What's Tested
 
@@ -37,7 +64,7 @@ every tool against a real, ephemeral GitLab CE instance — no mocks.
 | Branch Protection | `list_protected_branches`, `protect_branch`, `unprotect_branch` | 3 |
 | Environments & Releases | `list_environments`, `list_releases`, `create_release` | 3 |
 
-**Total: ~75 tests covering all 86 tools** (some tools share test cases via roundtrips).
+**Total: 81 tests covering all 86 tools** (some tools share test cases via roundtrips; 5 group wiki tests skipped — Premium only).
 
 ## Prerequisites
 
@@ -79,10 +106,48 @@ npm run teardown
 ## CI Workflow
 
 The E2E tests run automatically via `.github/workflows/e2e.yml`:
-- **Trigger**: Push to `main` (when `e2e/` or `src/` change), PRs, or manual dispatch
-- **GitLab CE**: Runs as a GitHub Actions service container (ephemeral, ~3 min boot)
-- **No shared runners**: Uses free `ubuntu-latest` — no GitLab.com runners needed
-- **Artifacts**: JUnit XML report uploaded for each run
+
+1. **Build & Publish** completes (Docker images for MCP server + E2E runner pushed to ghcr.io)
+2. **E2E Tests** is triggered via `workflow_run`
+3. Gate job decides: main → always, branches → only if commit message contains `[e2e]`
+4. Pulls pre-warmed GitLab image (falls back to cold `gitlab/gitlab-ce:latest`)
+5. Boots GitLab CE (~2 min warm, ~8-12 min cold)
+6. Provisions fixtures via E2E image (`npm run provision`)
+7. Starts MCP server container (streamable-http mode, PAT auth)
+8. Runs all E2E tests via E2E image (`npm test`)
+9. Uploads JUnit XML report as artifact
+
+**No shared runners**: Uses free `ubuntu-latest` — no GitLab.com runners needed.
+
+## Pre-warmed GitLab Image
+
+Cold-booting GitLab CE takes 8-12 minutes (database migrations, service init).
+The `warm-gitlab.yml` workflow solves this:
+
+### How it works
+
+1. Boots a cold `gitlab/gitlab-ce:<version>` container
+2. Waits for full readiness (`/-/readiness` endpoint)
+3. Stops services gracefully (`gitlab-ctl stop`)
+4. `docker commit` → saves the initialized state as a new image
+5. Pushes to `ghcr.io/<repo>/gitlab-ce-warm:latest` + versioned tag
+
+### Result
+
+The warm image has all migrations applied and services pre-configured.
+It boots in **~2 minutes** instead of 8-12. The E2E workflow automatically
+uses it (with fallback to cold image if unavailable).
+
+### Rebuild schedule
+
+- **Automatic**: weekly (Sunday 03:00 UTC)
+- **Manual**: `workflow_dispatch` with optional `gitlab_version` input
+- **When to rebuild**: after bumping the GitLab CE version in docker-compose
+
+### Configuration
+
+The warm image is stored in ghcr.io under the repository's packages:
+`ghcr.io/<owner>/<repo>/gitlab-ce-warm:<version>` and `:latest`.
 
 ## Environment Variables
 
@@ -115,3 +180,22 @@ docker run --rm \
 3. **Fixture-based** — A provisioning script seeds GitLab with deterministic test data. Tests are order-independent within a file.
 4. **Ephemeral GitLab** — Each CI run gets a fresh GitLab CE instance. No state leaks between runs.
 5. **Same toolchain** — Vitest + TypeScript, consistent with the unit test setup.
+6. **Dockerized runner** — E2E tests are packaged as a Docker image so CI never needs to `npm install` — just pull and run.
+7. **Pre-warmed image** — GitLab cold boot is 8-12 min; the warm workflow cuts it to ~2 min. Rebuilt weekly to avoid drift.
+8. **Coverage gate** — A bash script in the validate job ensures no tool can be added without a corresponding E2E test. Zero-dependency check (grep + sort).
+
+## Limitations
+
+- **GitLab Premium features** — Group wiki tools (`create_group_wiki_page`, etc.) require Premium. They are skipped in tests and excluded from the coverage gate.
+- **Async operations** — Some GitLab operations are async (e.g., group deletion). Tests validate the API accepted the request but do not poll for completion.
+- **No runner available** — GitLab CE in CI has no configured runner, so pipeline jobs stay `pending`. Tests that need job output (e.g., `get_job_log`) handle this gracefully.
+- **Rate limiting** — Tests run sequentially (`fileParallelism: false` in vitest) to avoid overwhelming the single-container GitLab instance.
+
+## Adding a New Tool Test
+
+1. Identify the test file by domain (e.g., `issues.e2e.ts` for issue tools)
+2. Add an `it()` block calling the tool via `globalThis.mcpClient.callTool()`
+3. Use `extractText()` or `extractJson()` from `helpers/types.ts` to parse
+4. Assert on the response structure (not just "defined")
+5. Run `./scripts/check-tool-coverage.sh` locally to verify coverage
+6. The coverage gate in CI will also catch missed tools
