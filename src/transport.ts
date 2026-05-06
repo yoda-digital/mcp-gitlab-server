@@ -200,6 +200,12 @@ export async function setupTransport(
     if (!serverFactory) {
       return server ? { server, bearerHash: null } : null;
     }
+    // If a static server is also provided, this is PAT mode with per-session
+    // factory (needed for streamable-http multi-session). No Bearer required.
+    if (server) {
+      return { server: serverFactory(''), bearerHash: null };
+    }
+    // OAuth mode: Bearer is mandatory
     const token = extractBearer(req);
     if (!token) return null;
     return { server: serverFactory(token), bearerHash: hashBearer(token) };

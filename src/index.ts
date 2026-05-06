@@ -1893,6 +1893,9 @@ async function runServer() {
         host: HOST,
         useSSE: USE_SSE,
         useStreamableHttp: USE_STREAMABLE_HTTP,
+        serverFactory: (USE_SSE || USE_STREAMABLE_HTTP)
+          ? () => createMcpServer(GITLAB_PERSONAL_ACCESS_TOKEN)
+          : undefined,
       });
     }
     const enabledTransports = [
