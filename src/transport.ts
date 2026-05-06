@@ -273,7 +273,7 @@ export async function setupTransport(
           return;
         }
 
-        // /healthz is a deprecated alias of /readyz; removed in 0.7.0.
+        // /healthz is a deprecated alias of /readyz; removed in 0.8.0.
         if (req.method === 'GET' && (pathname === '/readyz' || pathname === '/healthz')) {
           const sessionCount = Object.keys(transports).length;
           const maxSessions = parseInt(process.env.HEALTHZ_MAX_SESSIONS || '10000', 10);

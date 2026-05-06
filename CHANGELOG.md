@@ -5,7 +5,11 @@ All notable changes to `@yoda.digital/gitlab-mcp-server` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.1] - Unreleased
+## [Unreleased]
+
+_Nothing yet. New entries land here between releases._
+
+## [0.7.0] - 2026-05-06
 
 ### Added
 
@@ -41,7 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deprecated
 
 - **`/healthz`** — retained as alias of `/readyz` for backward compatibility.
-  Will be removed in 0.7.0. Note: the alias inherits the new `>=` threshold
+  Will be removed in 0.8.0. Note: the alias inherits the new `>=` threshold
   semantic from `/readyz` (was `>` in 0.6.0). An operator at exactly
   `HEALTHZ_MAX_SESSIONS` sessions now sees 503 where 0.6.0 returned 200.
 

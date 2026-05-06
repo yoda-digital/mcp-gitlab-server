@@ -23,8 +23,8 @@ Three health endpoints are exposed:
 
 ### `/healthz` (deprecated)
 
-Alias of `/readyz`. Retained for backward compatibility during the 0.6.x cycle.
-Will be removed in 0.7.0.
+Alias of `/readyz`. Retained for backward compatibility during the 0.7.x cycle.
+Will be removed in 0.8.0.
 
 ### Kubernetes Probe Configuration
 
