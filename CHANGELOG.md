@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **E2E test suite with 81 tests covering 86 tools** — comprehensive integration
+  tests running against a real GitLab CE instance (Docker). Covers projects, issues,
+  merge requests, repositories, pipelines, wikis, labels, milestones, groups, users,
+  and search tools. Uses Vitest with a shared fixture lifecycle. (#63)
+- **CI workflow `e2e.yml`** — GitHub Actions workflow with GitLab CE service
+  container, warm-up polling, and parallel test execution. Runs on PRs and pushes
+  to main. (#63)
+- **Tool coverage gate** — CI asserts that every registered tool has at least one
+  E2E test. New tools without tests fail the build. (#63)
+- **Branch build model** — `build.yml` validates PRs from any branch (not just
+  main), enabling feature branches to get CI feedback. (#63)
+
 ### Fixed
 
 - **Wiki attachment upload uses `multipart/form-data`** — the `upload_wiki_attachment`
