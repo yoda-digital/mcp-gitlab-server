@@ -9,7 +9,7 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 
 const GITLAB_URL = process.env.GITLAB_URL || 'http://localhost:8080';
-const GITLAB_ROOT_PASSWORD = process.env.GITLAB_ROOT_PASSWORD || '5iveL!fe';
+const GITLAB_ROOT_PASSWORD = process.env.GITLAB_ROOT_PASSWORD || 'E2eTestPassword1!';
 
 interface Fixtures {
   token: string;

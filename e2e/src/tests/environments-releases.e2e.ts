@@ -7,17 +7,11 @@
  * - list_releases
  * - create_release
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { extractJson } from '../helpers/types.js';
 
 describe('Environment tools', () => {
   let environmentId: number | undefined;
-
-  beforeAll(async () => {
-    // Create an environment via the GitLab API (deployments endpoint)
-    // We use create_or_update_file to trigger a deployment-like action,
-    // but environments are typically created by CI. Let's just list and test what exists.
-  });
 
   it('list_environments — returns environments array', async () => {
     const result = await globalThis.mcpClient.callTool({
