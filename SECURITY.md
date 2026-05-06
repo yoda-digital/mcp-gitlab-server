@@ -17,7 +17,7 @@ properties are a function of two axes:
 
 | `AUTH_MODE` | `HOST` (bind) | Outcome |
 |---|---|---|
-| `pat` | `127.0.0.1` (loopback) | OK for single-tenant local dev. Wildcard CORS permitted. No network exposure. |
+| `pat` | `127.0.0.0/8` IP literal (loopback) | OK for single-tenant local dev. Wildcard CORS permitted. No network exposure. |
 | `pat` | non-loopback | **Refused at startup.** Unauthenticated network exposure of a PAT-backed GitLab tool surface (CWE-306). |
 | `oauth` | `127.0.0.1` (loopback) | OK. `Authorization: Bearer` required on every request. |
 | `oauth` | non-loopback | OK for shared deployments. Front with a gateway that handles your IdP and injects `Authorization: Bearer`. |
@@ -35,6 +35,12 @@ CORS: the wildcard `Access-Control-Allow-Origin: *` is emitted only on
 the loopback-PAT-empty-allowlist combination. Network-exposed binds
 require an explicit `CORS_ALLOW_ORIGINS` allowlist; otherwise no
 `Allow-Origin` header is set and browsers refuse cross-origin reads.
+
+Note on hostnames: the loopback check accepts the literal name
+`localhost` (case-insensitive) but does **not** resolve it through
+DNS or `/etc/hosts`. For hardening configurations, prefer the IP
+literal `127.0.0.1` — the literal can't be redirected by a hosts-file
+mistake or a downstream resolver to a non-loopback address.
 
 ## Scope
 

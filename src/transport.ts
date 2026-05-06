@@ -17,6 +17,13 @@ import { parse } from "url";
  * IPv4-mapped IPv6 loopback (`::ffff:127.x.y.z`), and the case-insensitive
  * hostname `localhost`. A naive equality check on `127.0.0.1` alone would
  * have missed an operator binding to `127.5.6.7` for port-conflict reasons.
+ *
+ * Note on `localhost`: this is a NAME match, not a DNS/hosts-file
+ * resolution. An operator with `/etc/hosts` mapping `localhost` to a
+ * non-loopback address would pass this check by name while Node's
+ * `httpServer.listen("localhost", …)` resolves to the public IP. That
+ * scenario is operator-induced and not defended against here — for
+ * hardening configs, prefer IP literals (`127.0.0.1`) over names.
  */
 export function isLoopbackHost(host: string): boolean {
   if (host.toLowerCase() === 'localhost') return true;
