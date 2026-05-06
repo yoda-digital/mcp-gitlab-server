@@ -200,6 +200,7 @@ async function provision(): Promise<Fixtures> {
   const outDir = process.env.FIXTURES_DIR || '/app/fixtures';
   const outPath = resolve(outDir, 'fixtures.json');
   mkdirSync(dirname(outPath), { recursive: true });
+  // lgtm[js/http-to-file-access] — intentional: test fixtures saved for E2E teardown
   writeFileSync(outPath, JSON.stringify(fixtures, null, 2));
   console.log(`✅ Fixtures written to ${outPath}`);
 
