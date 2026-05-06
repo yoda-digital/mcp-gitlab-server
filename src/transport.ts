@@ -97,8 +97,17 @@ function hashBearer(token: string): string {
 function extractBearer(req: IncomingMessage): string | null {
   const authHeader = req.headers["authorization"];
   const headerStr = Array.isArray(authHeader) ? authHeader[0] : (authHeader || "");
-  const match = headerStr.match(/^Bearer\s+(.+)$/i);
-  return match ? match[1].trim() : null;
+  // String-based parse to avoid regex backtracking on attacker-controlled
+  // headers. CodeQL js/polynomial-redos flagged the previous
+  // `/^Bearer\s+(.+)$/i` as polynomial-time on inputs like `Bearer ` plus
+  // many whitespace characters: overlapping `\s+` and greedy `(.+)` force
+  // expensive backtracking before `$` decides match/no-match (CWE-1333).
+  if (headerStr.length <= 6) return null;
+  if (headerStr.substring(0, 6).toLowerCase() !== "bearer") return null;
+  const sep = headerStr[6];
+  if (sep !== ' ' && sep !== '\t') return null;
+  const token = headerStr.substring(7).trim();
+  return token.length > 0 ? token : null;
 }
 
 /**
