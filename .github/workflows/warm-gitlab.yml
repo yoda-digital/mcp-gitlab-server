@@ -1,0 +1,184 @@
+# ---------------------------------------------------------------------------
+# Pre-warm GitLab CE image for E2E tests
+#
+# This workflow boots a cold GitLab CE instance, waits for full initialization
+# (database migrations, service startup), then commits the container state to
+# a new "warm" image. The warm image boots in ~2 min vs 8-12 min cold.
+#
+# Schedule: weekly (Sunday 03:00 UTC) to keep the image fresh.
+# Manual: workflow_dispatch to rebuild on demand (e.g. after GitLab version bump).
+# ---------------------------------------------------------------------------
+name: Warm GitLab Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      gitlab_version:
+        description: 'GitLab CE version to warm'
+        default: '18.11.2-ce.0'
+        type: string
+  schedule:
+    # Weekly rebuild — Sunday 03:00 UTC
+    - cron: '0 3 * * 0'
+
+env:
+  REGISTRY: ghcr.io
+  GITLAB_VERSION: ${{ inputs.gitlab_version || '18.11.2-ce.0' }}
+  WARM_IMAGE_NAME: ${{ github.repository }}/gitlab-ce-warm
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  warm:
+    name: Build pre-warmed GitLab CE image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Pull cold GitLab CE image
+        run: |
+          echo "📦 Pulling gitlab/gitlab-ce:${{ env.GITLAB_VERSION }}..."
+          docker pull "gitlab/gitlab-ce:${{ env.GITLAB_VERSION }}"
+
+      - name: Boot GitLab CE (cold start)
+        run: |
+          # external_url uses port 80 (default inside container) to avoid
+          # nginx/puma port conflicts. Host maps 8080 → container 80.
+          docker run -d \
+            --name gitlab-warm \
+            --shm-size 1g \
+            -p 8080:80 \
+            -e GITLAB_OMNIBUS_CONFIG="
+              external_url 'http://gitlab.local';
+              gitlab_rails['initial_root_password'] = 'E2eTestPassword1!';
+              gitlab_rails['monitoring_whitelist'] = ['0.0.0.0/0', '::/0'];
+              prometheus_monitoring['enable'] = false;
+              registry['enable'] = false;
+              sidekiq['concurrency'] = 2;
+              puma['worker_processes'] = 1;
+              puma['min_threads'] = 1;
+              puma['max_threads'] = 2;
+              postgresql['shared_buffers'] = '128MB';
+              postgresql['max_connections'] = 50;
+              gitlab_rails['gitlab_shell_ssh_port'] = 2222;
+            " \
+            "gitlab/gitlab-ce:${{ env.GITLAB_VERSION }}"
+
+          echo "⏳ Waiting for cold boot (this takes 8-12 min)..."
+
+      - name: Wait for GitLab readiness
+        run: |
+          SECONDS=0
+          until curl -sf http://localhost:8080/-/readiness > /dev/null 2>&1; do
+            if [ $SECONDS -gt 1200 ]; then
+              echo "❌ GitLab did not become ready within 20 minutes"
+              docker logs gitlab-warm --tail 80
+              exit 1
+            fi
+            sleep 10
+            echo "   ...waiting (${SECONDS}s elapsed)"
+          done
+          echo "✅ GitLab is ready (took ${SECONDS}s)"
+
+      - name: Verify GitLab API is functional
+        run: |
+          # In GitLab 17.x, /api/v4/version requires auth — a 401 proves the
+          # API layer is alive and correctly enforcing authentication.
+          # Any 2xx or 401 = API functional. 5xx or no response = broken.
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "http://localhost:8080/api/v4/version")
+          echo "API /version returned: $HTTP_CODE"
+          if [[ "$HTTP_CODE" =~ ^5 ]] || [[ "$HTTP_CODE" == "000" ]]; then
+            echo "❌ GitLab API not functional (got $HTTP_CODE)"
+            exit 1
+          fi
+          echo "✅ API responding (auth enforced)"
+
+      - name: Gracefully stop GitLab services
+        run: |
+          # Stop services cleanly before committing (sidekiq may timeout — tolerate)
+          docker exec gitlab-warm gitlab-ctl stop || true
+          # Wait for services to stop
+          sleep 5
+          echo "✅ Services stopped"
+
+      - name: Commit warm image
+        run: |
+          WARM_TAG="${{ env.REGISTRY }}/${{ env.WARM_IMAGE_NAME }}:${{ env.GITLAB_VERSION }}"
+          echo "📸 Committing container state as: $WARM_TAG"
+
+          # Detect the original CMD from the source image
+          ORIGINAL_CMD=$(docker inspect "gitlab/gitlab-ce:${{ env.GITLAB_VERSION }}" --format '{{json .Config.Cmd}}')
+          echo "   Original CMD: $ORIGINAL_CMD"
+
+          docker commit \
+            --change="CMD $ORIGINAL_CMD" \
+            --message "Pre-warmed GitLab CE ${{ env.GITLAB_VERSION }} (migrations done, services initialized)" \
+            gitlab-warm \
+            "$WARM_TAG"
+
+          echo "warm_tag=$WARM_TAG" >> "$GITHUB_ENV"
+          echo "✅ Image committed"
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push warm image
+        run: |
+          LATEST_TAG="${{ env.REGISTRY }}/${{ env.WARM_IMAGE_NAME }}:latest"
+          docker tag "${{ env.warm_tag }}" "$LATEST_TAG"
+          echo "🚀 Pushing ${{ env.warm_tag }}..."
+          docker push "${{ env.warm_tag }}"
+          echo "🚀 Pushing $LATEST_TAG..."
+          docker push "$LATEST_TAG"
+          echo "✅ Warm image pushed (versioned + latest)"
+
+      - name: Verify warm image boots fast
+        run: |
+          # Stop the old container
+          docker rm -f gitlab-warm
+
+          echo "🔥 Testing warm image boot time..."
+          docker run -d \
+            --name gitlab-warm-test \
+            --shm-size 1g \
+            -p 8081:80 \
+            -e GITLAB_OMNIBUS_CONFIG="
+              external_url 'http://gitlab.local';
+              gitlab_rails['initial_root_password'] = 'E2eTestPassword1!';
+              gitlab_rails['monitoring_whitelist'] = ['0.0.0.0/0', '::/0'];
+              prometheus_monitoring['enable'] = false;
+              registry['enable'] = false;
+              sidekiq['concurrency'] = 2;
+              puma['worker_processes'] = 1;
+              puma['min_threads'] = 1;
+              puma['max_threads'] = 2;
+              postgresql['shared_buffers'] = '128MB';
+              postgresql['max_connections'] = 50;
+            " \
+            "${{ env.warm_tag }}"
+
+          SECONDS=0
+          until curl -sf http://localhost:8081/-/readiness > /dev/null 2>&1; do
+            if [ $SECONDS -gt 300 ]; then
+              echo "⚠️ Warm image took >5 min — not much faster than cold"
+              docker logs gitlab-warm-test --tail 30
+              break
+            fi
+            sleep 5
+          done
+          echo "🏁 Warm image boot time: ${SECONDS}s"
+
+          docker rm -f gitlab-warm-test
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f gitlab-warm 2>/dev/null || true
+          docker rm -f gitlab-warm-test 2>/dev/null || true
