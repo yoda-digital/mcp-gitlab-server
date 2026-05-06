@@ -347,8 +347,10 @@ export const GitLabWikiAttachmentSchema = z.object({
   file_name: z.string(),
   file_path: z.string(),
   branch: z.string(),
-  commit_id: z.string(),
-  url: z.string().optional()
+  link: z.object({
+    url: z.string(),
+    markdown: z.string()
+  })
 });
 
 export type GitLabWikiAttachment = z.infer<typeof GitLabWikiAttachmentSchema>;
