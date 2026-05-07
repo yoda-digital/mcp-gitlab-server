@@ -1538,7 +1538,7 @@ export class GitLabApi {
 
     if (!response.ok) {
       let errorMessage = `GitLab API error: ${response.statusText}`;
-      
+
       if (response.status === 404) {
         errorMessage = `Issue not found: Project ID ${projectId}, Issue IID ${issueIid}`;
       } else if (response.status === 403) {
@@ -1546,7 +1546,7 @@ export class GitLabApi {
       } else if (response.status === 429) {
         errorMessage = `GitLab API rate limit exceeded`;
       }
-      
+
       throw new McpError(
         ErrorCode.InternalError,
         errorMessage
@@ -1602,7 +1602,7 @@ export class GitLabApi {
 
     if (!response.ok) {
       let errorMessage = `GitLab API error: ${response.statusText}`;
-      
+
       if (response.status === 404) {
         errorMessage = `Issue not found: Project ID ${projectId}, Issue IID ${issueIid}`;
       } else if (response.status === 403) {
@@ -1610,7 +1610,7 @@ export class GitLabApi {
       } else if (response.status === 429) {
         errorMessage = `GitLab API rate limit exceeded`;
       }
-      
+
       throw new McpError(
         ErrorCode.InternalError,
         errorMessage
