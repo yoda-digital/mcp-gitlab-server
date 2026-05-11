@@ -32,7 +32,7 @@ jobs:
           dockerfile: Dockerfile
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Helm lint
         run: |
@@ -172,7 +172,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Install yq
         uses: mikefarah/yq@v4
