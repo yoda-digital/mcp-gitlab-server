@@ -7,24 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet. New entries land here between releases._
+
+## [0.7.1] - 2026-05-18
+
+Security + schema-correctness release. Closes all six open Dependabot alerts and a production-breaker for GitLab EE users.
+
 ### Security
 
-- **Override `ip-address` to 10.1.1 (GHSA-v2v4-37r5-5v8g, moderate)** — closes
-  the XSS vulnerability in `Address6` HTML-emitting methods. The package is
-  pulled transitively via `@modelcontextprotocol/sdk → express-rate-limit → ip-address`
-  and was pinned at the vulnerable 10.1.0 in the lockfile. Added an `overrides`
-  entry in `package.json` to force the patched version regardless of upstream
-  resolution.
+- **`fast-uri` 3.1.0 → 3.1.2 (#65)** — closes [GHSA-q3j6-qgpj-74h6](https://github.com/advisories/GHSA-q3j6-qgpj-74h6) (path traversal, HIGH) and [GHSA-v39h-62p7-jpjc](https://github.com/advisories/GHSA-v39h-62p7-jpjc) (host confusion, HIGH).
+- **`hono` 4.12.16 → 4.12.18 (#66)** — closes [GHSA-qp7p-654g-cw7p](https://github.com/advisories/GHSA-qp7p-654g-cw7p) (CSS injection JSX SSR), [GHSA-p77w-8qqv-26rm](https://github.com/advisories/GHSA-p77w-8qqv-26rm) (Cache Vary leak), and [GHSA-hm8q-7f3q-5f36](https://github.com/advisories/GHSA-hm8q-7f3q-5f36) (JWT NumericDate).
+- **Override `ip-address` to 10.1.1 (#78)** — closes [GHSA-v2v4-37r5-5v8g](https://github.com/advisories/GHSA-v2v4-37r5-5v8g) (XSS in `Address6`, moderate). Pulled transitively via `@modelcontextprotocol/sdk → express-rate-limit → ip-address` and not auto-fixable by Dependabot until `express-rate-limit` re-pins it.
 
 ### Fixed
 
-- **`avatar_url` schema validation against GitLab EE (#74)** — `GitLabUserSchema`
-  and `GitLabMemberSchema` now accept `null` for `avatar_url`. The GitLab API
-  docs declare it as `string`, but GitLab EE returns `null` for users without a
-  custom avatar. Without this fix, `GetMergeRequestChanges`,
-  `list_merge_request_notes`, and `list_merge_request_discussions` throw
-  `Invalid arguments: author.avatar_url: Expected string, received null` on
-  every call. Added regression tests covering both `null` and string values.
+- **`avatar_url` schema validation against GitLab EE (#74, #77)** — `GitLabUserSchema` and `GitLabMemberSchema` now accept `null` for `avatar_url`. The GitLab API docs declare it as `string`, but GitLab EE 17.5.5 returns `null` for users without a custom avatar (gitlab.com synthesizes a Gravatar URL so the issue is SaaS-invisible). Without this fix, `GetMergeRequestChanges`, `list_merge_request_notes`, and `list_merge_request_discussions` throw `Invalid arguments: author.avatar_url: Expected string, received null` on every call against EE. Added regression tests covering null, string, and undefined `avatar_url` paths.
+- **Revert accidental `mempalace.yaml` from main (#76)** — personal MemPalace plugin state landed at `165ea06`; the release-driven publish model (#43) prevented npm pollution. The revert also adds `mempalace.yaml`, `.mempalace/`, and `entities.json` to `.gitignore` to prevent recurrence.
+
+### Changed
+
+- **`hadolint/hadolint-action` 3.1.0 → 3.3.0 (#68)** — CI minor bump.
+- **`@types/node` 20.19.39 → 20.19.41, `vitest` 4.1.5 → 4.1.6 (#75)** — dev deps minor-patch group.
 
 ## [0.7.0] - 2026-05-06
 
