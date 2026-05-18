@@ -16,7 +16,7 @@ npm start        # Run compiled server
 npm run dev      # Development with ts-node hot reload
 ```
 
-**Note**: `npm test` runs vitest (`vitest run`). Existing specs live alongside source: `src/formatters.test.ts`, `src/schemas.test.ts`, `src/gitlab-api.test.ts`. New behavior (transport, OAuth, /healthz, etc.) should ship with vitest coverage. No dedicated linter is configured; TypeScript strict mode handles type checking.
+**Note**: `npm test` runs vitest (`vitest run`). Unit specs live alongside source: `src/formatters.test.ts`, `src/schemas.test.ts`, `src/gitlab-api.test.ts`, `src/transport.test.ts`, `src/utils.test.ts`. Plus an **E2E suite under `e2e/`** that runs against a real GitLab CE container (81 tests, 86 tools, see `CONTRIBUTING.md` § "Running the E2E suite locally"). The coverage gate in `scripts/check-tool-coverage.sh` (wired into `build.yml`) fails the build if a new tool ships without an E2E test. No dedicated linter is configured; TypeScript strict mode handles type checking.
 
 **Security:** Vulnerabilities go through [GitHub Private Vulnerability Reporting](https://github.com/yoda-digital/mcp-gitlab-server/security/advisories/new) — never via public issues. Threat model and scope are in `SECURITY.md`.
 
