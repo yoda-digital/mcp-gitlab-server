@@ -16,17 +16,37 @@ export interface Fixtures {
 }
 
 /**
- * MCP tool call result — accepts the union type from callTool().
+ * MCP tool call result — accepts either SDK variant.
+ *
+ * `callTool()` returns a discriminated union: one variant has `content`
+ * (CallToolResult), the other has `toolResult: unknown` (legacy/streaming).
+ * Helpers assume the content variant and throw if it's missing.
+ *
+ * This shape is loose enough for both variants but more specific than `any`,
+ * which preserves IDE help on `.content[i].type/.text` for callers.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ToolResult = any;
+export type ToolResult = {
+  content?: Array<{
+    type: string;
+    text?: string;
+    [key: string]: unknown;
+  }>;
+  [key: string]: unknown;
+};
+
+function assertContent(result: ToolResult): Array<{ type: string; text?: string }> {
+  if (!result.content || !Array.isArray(result.content)) {
+    throw new Error('Tool result has no content array (likely a toolResult-variant response)');
+  }
+  return result.content;
+}
 
 /**
  * Extract text from an MCP tool result.
  */
 export function extractText(result: ToolResult): string {
-  const r = result as { content: Array<{ type: string; text?: string }> };
-  const item = r.content.find((c) => c.type === 'text');
+  const content = assertContent(result);
+  const item = content.find((c) => c.type === 'text');
   if (!item || !item.text) throw new Error('No text content in tool result');
   return item.text;
 }
@@ -37,8 +57,8 @@ export function extractText(result: ToolResult): string {
  * This finds the last text item that is valid JSON.
  */
 export function extractJson<T = unknown>(result: ToolResult): T {
-  const r = result as { content: Array<{ type: string; text?: string }> };
-  const textItems = r.content.filter((c) => c.type === 'text' && c.text);
+  const content = assertContent(result);
+  const textItems = content.filter((c) => c.type === 'text' && c.text);
   // Try from last to first — JSON data is typically the last item
   for (let i = textItems.length - 1; i >= 0; i--) {
     try {
