@@ -62,3 +62,8 @@ implementation/
 
 # Local tool caches (Serena)
 .serena/
+
+# Local tool caches (MemPalace)
+mempalace.yaml
+.mempalace/
+entities.json
