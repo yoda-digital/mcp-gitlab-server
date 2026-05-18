@@ -10,10 +10,12 @@ services:
   gitlab:
     image: gitlab/gitlab-ce:18.11.3-ce.0
     ports:
-      - "8080:80"
+      - "${GITLAB_HOST_PORT:-8080}:80"
     environment:
+      # external_url uses the host-facing port so GitLab-generated URLs
+      # (clone URLs, OAuth callbacks, etc.) match how callers reach it.
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://localhost:8080'
+        external_url 'http://localhost:${GITLAB_HOST_PORT:-8080}'
         gitlab_rails['initial_root_password'] = 'E2eTestPassword1!'
         prometheus_monitoring['enable'] = false
         registry['enable'] = false
