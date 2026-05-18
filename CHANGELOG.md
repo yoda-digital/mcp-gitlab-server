@@ -7,7 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet. New entries land here between releases._
+E2E test infrastructure (reincarnation of #63 by @ecthelion77, Olivier Gintrand) plus three pre-existing schema bugs the suite surfaced on first run against GitLab CE 18.x.
+
+### Added
+
+- **End-to-end test suite** under `e2e/` — 81 tests covering all 86 MCP tools
+  against a real GitLab CE container. 76 pass + 5 Premium-only skipped on a
+  fresh GitLab volume. Originally proposed in #63 by @ecthelion77; reincarnated
+  by maintainer onto current `main` with corrections (see `Internal` below).
+- **`.github/workflows/e2e.yml`** — runs the E2E suite after the build workflow
+  completes, using a pre-warmed GitLab CE image.
+- **`.github/workflows/warm-gitlab.yml`** — weekly pre-warm of a GitLab CE image
+  with migrations already applied, cutting E2E boot time from 8-12 min cold to
+  ~2 min. Manual `workflow_dispatch` available for ad-hoc rebuilds.
+- **`scripts/check-tool-coverage.sh`** — coverage gate wired into `build.yml`
+  that fails the build if a new tool is added to `src/index.ts` without a
+  corresponding E2E test. Premium-only tools (group wiki) whitelisted.
+- **`GITLAB_HOST_PORT` env override** in `e2e/docker-compose.yml` for local
+  contributors whose host port 8080 is occupied by other services.
+
+### Fixed
+
+- **`GitLabRepositorySchema` now declares `path_with_namespace` and `path`** —
+  present in every `/projects` response from GitLab but Zod was silently
+  stripping them, so tool consumers that relied on them (including the
+  `search_repositories` E2E test) saw `undefined`. Pre-existing bug on `main`,
+  surfaced by the reincarnated suite.
+- **`approveMergeRequest` / `unapproveMergeRequest` no longer parse responses
+  as full MergeRequest objects** — the `/merge_requests/:iid/approve` and
+  `/unapprove` endpoints in GitLab CE return a small approval-state object,
+  not the full MR. The old code threw `Invalid arguments: id, iid, ... required`
+  on every call. New schema `MergeRequestApprovalStateSchema` parses both
+  variants and tolerates the 204 No Content return from CE on unapprove.
+- **`WikiPageFormatEnum` accepts `'plaintext'`** — GitLab CE 18.x returns
+  `'plaintext'` on wiki pages created via API without an explicit format,
+  in addition to the 4 documented values. Enum was rejecting the response.
+
+### Internal
+
+- **Maintainer corrections applied during reincarnation of #63** — node:22-alpine
+  digest pin in `e2e/Dockerfile`; `gitlab/gitlab-ce:18.11.3-ce.0` pin in
+  docker-compose (was `:latest`); `external_url 'http://gitlab.local'` (nominal
+  hostname) so nginx listens on container port 80 matching the port mapping;
+  `monitoring_whitelist = ['0.0.0.0/0', '::/0']` so host-side
+  `wait-for-gitlab.sh` can poll `/-/readiness` through the docker bridge;
+  `FIXTURES_DIR` default changed from absolute `/app/fixtures` to relative
+  `./fixtures` so host runs work; `ToolResult` type narrowed from `any` to a
+  shaped optional-content union; coverage-script regex tightened to `.callTool(`
+  context to eliminate 5 false positives; `.dockerignore` added; `warm-gitlab.yml`
+  permissions and `:latest` push gating hardened. Full per-commit detail on the
+  reincarnation PR.
+
+### Credits
+
+- E2E suite design and ~80% of the implementation: @ecthelion77 (Olivier Gintrand).
+  Cherry-picked with authorship preserved on each of his 5 commits; the squash
+  merge to `main` carries a `Co-authored-by:` trailer.
 
 ## [0.7.2] - 2026-05-18
 
