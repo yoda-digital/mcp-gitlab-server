@@ -372,6 +372,78 @@ The discipline is non-negotiable: a public commit-message promise to a contribut
 
 ---
 
+## 🎯 Release ceremony
+
+This project uses a **release-driven publish model** (since PR #43, released as v0.5.0). Code landing on `main` does **not** publish to npm — releases are deliberate, versioned ceremonies. The `publish.yml` workflow fires on `release.published` or `workflow_dispatch`; pushes to `main` only run `build-and-test` as a safety net.
+
+### When to cut a release
+
+| Trigger | Lead time |
+|---|---|
+| Any user-visible bug fix or feature | Within ~7 days of merge |
+| Security fix (alert closed, CVE patched) | Within 24 hours of merge |
+| Internal refactor with no user-visible change | Can wait for the next batched release |
+| Dependency-only patch bumps (Dependabot) | Batch into the next release; don't ceremonize each bump |
+
+### Cutting a release — maintainer steps
+
+1. **Confirm `main` is green**:
+   ```bash
+   gh run list --branch main --limit 3
+   ```
+
+2. **Bump the version**:
+   ```bash
+   npm version <patch|minor|major> --no-git-tag-version
+   ```
+   This updates `package.json` and `package-lock.json` only — the actual git tag is created via the GitHub Release in step 6.
+
+3. **Date the CHANGELOG**: in `CHANGELOG.md`, move the `## [Unreleased]` entries under a new section `## [X.Y.Z] - YYYY-MM-DD` (use today's UTC date). Leave `[Unreleased]` empty for the next round of entries.
+
+4. **Commit on a release branch**:
+   ```bash
+   git checkout -b release/X.Y.Z
+   git add package.json package-lock.json CHANGELOG.md
+   git commit -m "chore(release): X.Y.Z"
+   git push -u origin release/X.Y.Z
+   ```
+
+5. **Open and merge the release PR**:
+   ```bash
+   gh pr create --title "chore(release): X.Y.Z" --body "Release prep — version bump + CHANGELOG dating."
+   # After CI green:
+   gh pr merge <N> --squash --admin --delete-branch
+   ```
+
+6. **Create the GitHub Release on the merge commit**:
+   ```bash
+   gh release create vX.Y.Z \
+     --title "vX.Y.Z — <one-line summary>" \
+     --notes-file <(awk '/^## \[X\.Y\.Z\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md) \
+     --target main
+   ```
+   The `release.published` event fires immediately and starts `publish.yml`.
+
+7. **Verify the release converged**:
+   - npm: `npm view @yoda.digital/gitlab-mcp-server@X.Y.Z`
+   - ghcr: `docker pull ghcr.io/yoda-digital/mcp-gitlab-server:X.Y.Z`
+   - Helm: confirm via `gh run view <build-run-id>` that the chart push step succeeded.
+
+8. **Update the public portal** at `https://opensource.yoda.digital` (mirrors CHANGELOG entries).
+
+### Recovery
+
+If either leg of the release pipeline fails, see `docs/OPERATIONS.md` → "Release atomicity & recovery". Do **not** delete the GitHub Release or tag — they may be cached downstream.
+
+### What NOT to do
+
+- **Don't `npm publish` from your laptop.** Trusted Publishing is the only authorized path; manual publishes break the audit chain.
+- **Don't amend a published release.** npm versions are immutable; downstream consumers cache them.
+- **Don't skip the version bump** even for tiny fixes. The publish workflow expects monotonic versions and will reject duplicates.
+- **Don't rewrite historical CHANGELOG entries.** The public portal at opensource.yoda.digital mirrors them; rewrites break that mirror.
+
+---
+
 ## 🚫 What NOT to Do
 
 ### ❌ Don't
