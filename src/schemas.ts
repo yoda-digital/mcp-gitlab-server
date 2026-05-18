@@ -343,6 +343,9 @@ export const GitLabWikiPagesResponseSchema = z.object({
 export type GitLabWikiPagesResponse = z.infer<typeof GitLabWikiPagesResponseSchema>;
 
 // GitLab Wiki Attachment
+// Recent GitLab versions return a nested `link` object with `url` and `markdown`.
+// Older self-hosted instances may still return the flat `{commit_id, url}` shape.
+// We accept either; the formatter normalises into a single output shape.
 export const GitLabWikiAttachmentSchema = z.object({
   file_name: z.string(),
   file_path: z.string(),
@@ -350,7 +353,9 @@ export const GitLabWikiAttachmentSchema = z.object({
   link: z.object({
     url: z.string(),
     markdown: z.string()
-  })
+  }).optional(),
+  url: z.string().optional(),
+  commit_id: z.string().optional(),
 });
 
 export type GitLabWikiAttachment = z.infer<typeof GitLabWikiAttachmentSchema>;
