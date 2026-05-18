@@ -123,21 +123,36 @@ jobs:
           echo "✅ Image committed"
 
       - name: Log in to ghcr.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push warm image
+        # NOTE: the committed image carries the public test password
+        # ('E2eTestPassword1!') hashed inside the warm Postgres DB. That's
+        # intentional and harmless — it's a known public test credential
+        # documented in e2e/README.md, NOT a real secret. Do not bake any
+        # real secret into this workflow.
+        #
+        # The :latest tag is only updated by the scheduled run (cron). A
+        # workflow_dispatch with an older GITLAB_VERSION pushes only the
+        # versioned tag, so :latest can't accidentally regress.
         run: |
-          LATEST_TAG="${{ env.REGISTRY }}/${{ env.WARM_IMAGE_NAME }}:latest"
-          docker tag "${{ env.warm_tag }}" "$LATEST_TAG"
           echo "🚀 Pushing ${{ env.warm_tag }}..."
           docker push "${{ env.warm_tag }}"
-          echo "🚀 Pushing $LATEST_TAG..."
-          docker push "$LATEST_TAG"
-          echo "✅ Warm image pushed (versioned + latest)"
+
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            LATEST_TAG="${{ env.REGISTRY }}/${{ env.WARM_IMAGE_NAME }}:latest"
+            docker tag "${{ env.warm_tag }}" "$LATEST_TAG"
+            echo "🚀 Scheduled run — also pushing $LATEST_TAG..."
+            docker push "$LATEST_TAG"
+          else
+            echo "ℹ️  workflow_dispatch — skipping :latest tag update to prevent regression"
+          fi
+
+          echo "✅ Warm image pushed"
 
       - name: Verify warm image boots fast
         run: |
