@@ -1,0 +1,10 @@
+node_modules
+.git
+.gitignore
+*.log
+fixtures.json
+fixtures/
+.env
+.env.*
+docker-compose.yml
+README.md
