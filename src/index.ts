@@ -1070,6 +1070,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const attachment = await gitlabApi.uploadProjectWikiAttachment(args.project_id, {
           file_path: args.file_path,
           content: args.content,
+          content_encoding: args.content_encoding,
           branch: args.branch
         });
         return formatWikiAttachmentResponse(attachment);
@@ -1124,6 +1125,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const attachment = await gitlabApi.uploadGroupWikiAttachment(args.group_id, {
           file_path: args.file_path,
           content: args.content,
+          content_encoding: args.content_encoding,
           branch: args.branch
         });
         return formatWikiAttachmentResponse(attachment);

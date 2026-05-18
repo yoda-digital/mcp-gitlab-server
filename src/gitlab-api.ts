@@ -1102,11 +1102,15 @@ export class GitLabApi {
     options: {
       file_path: string;
       content: string;
+      content_encoding?: 'utf8' | 'base64';
       branch?: string;
     }
   ): Promise<GitLabWikiAttachment> {
     const fileName = options.file_path.split('/').filter(Boolean).pop() || 'attachment';
-    const blob = new Blob([options.content], { type: 'application/octet-stream' });
+    const bytes = options.content_encoding === 'base64'
+      ? Buffer.from(options.content, 'base64')
+      : options.content;
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
 
     const formData = new FormData();
     formData.append('file', blob, fileName);
@@ -1368,11 +1372,15 @@ export class GitLabApi {
     options: {
       file_path: string;
       content: string;
+      content_encoding?: 'utf8' | 'base64';
       branch?: string;
     }
   ): Promise<GitLabWikiAttachment> {
     const fileName = options.file_path.split('/').filter(Boolean).pop() || 'attachment';
-    const blob = new Blob([options.content], { type: 'application/octet-stream' });
+    const bytes = options.content_encoding === 'base64'
+      ? Buffer.from(options.content, 'base64')
+      : options.content;
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
 
     const formData = new FormData();
     formData.append('file', blob, fileName);

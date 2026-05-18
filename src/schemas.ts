@@ -559,6 +559,10 @@ export const UploadProjectWikiAttachmentSchema = z.object({
   project_id: z.string(),
   file_path: z.string(),
   content: z.string(),
+  // 'utf8' (default) treats `content` as text/raw bytes. 'base64' decodes
+  // `content` before upload — required to send binary files (PNG, PDF, etc.)
+  // through MCP's JSON-string parameter.
+  content_encoding: z.enum(['utf8', 'base64']).optional(),
   branch: z.string().optional()
 });
 
@@ -598,6 +602,7 @@ export const UploadGroupWikiAttachmentSchema = z.object({
   group_id: z.string(),
   file_path: z.string(),
   content: z.string(),
+  content_encoding: z.enum(['utf8', 'base64']).optional(),
   branch: z.string().optional()
 });
 
