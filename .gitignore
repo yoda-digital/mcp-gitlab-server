@@ -62,5 +62,3 @@ implementation/
 
 # Local tool caches (Serena)
 .serena/
-entities.json
-.gitignore
