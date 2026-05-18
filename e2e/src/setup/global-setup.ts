@@ -22,8 +22,9 @@ declare global {
 }
 
 beforeAll(async () => {
-  // Load fixtures (provisioned before test run)
-  const fixturesDir = process.env.FIXTURES_DIR || '/app/fixtures';
+  // Load fixtures (provisioned before test run). See provision-fixtures.ts
+  // for default-path rationale: ./fixtures works for both host and container.
+  const fixturesDir = process.env.FIXTURES_DIR || './fixtures';
   const fixturePath = resolve(fixturesDir, 'fixtures.json');
   if (!existsSync(fixturePath)) {
     throw new Error(
