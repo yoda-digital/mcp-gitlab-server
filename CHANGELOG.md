@@ -58,6 +58,22 @@ E2E test infrastructure (reincarnation of #63 by @ecthelion77, Olivier Gintrand)
   permissions and `:latest` push gating hardened. Full per-commit detail on the
   reincarnation PR.
 
+### Documentation
+
+- **`docs/OPERATIONS.md`** gained two operational runbooks:
+  "Release atomicity & recovery" (closes #47) covering the independent
+  failure modes of `build.yml` and `publish.yml` plus `gh CLI` recovery
+  commands for each asymmetric case, and "First-publish runbook: ghcr.io
+  package" (closes #51) covering the one-time visibility/Actions-access
+  setup for a freshly created container package on GitHub.
+- **`CONTRIBUTING.md`** gained a "🎯 Release ceremony" section (closes #49)
+  documenting the release-driven publish model (since #43): when to cut a
+  release, the 8-step maintainer procedure, and the anti-patterns (no
+  manual `npm publish`, no amends to published releases, no CHANGELOG
+  rewrites).
+- **`CLAUDE.md`** test note refreshed to mention the new `e2e/` suite +
+  coverage gate, and to list all current unit test files.
+
 ### Credits
 
 - E2E suite design and ~80% of the implementation: @ecthelion77 (Olivier Gintrand).
