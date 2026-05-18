@@ -14,7 +14,8 @@ interface Fixtures {
 }
 
 async function teardown() {
-  const fixturesDir = process.env.FIXTURES_DIR || '/app/fixtures';
+  // See provision-fixtures.ts for rationale on the default path.
+  const fixturesDir = process.env.FIXTURES_DIR || './fixtures';
   const fixturePath = resolve(fixturesDir, 'fixtures.json');
 
   if (!existsSync(fixturePath)) {

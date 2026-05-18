@@ -196,8 +196,12 @@ async function provision(): Promise<Fixtures> {
     wikiPageSlug: wiki.slug,
   };
 
-  // Write fixtures to file (CI mounts /app/fixtures as a volume)
-  const outDir = process.env.FIXTURES_DIR || '/app/fixtures';
+  // Write fixtures to file. Default is ./fixtures relative to cwd so that
+  // `npm run provision` from the e2e/ directory works on the host (writes
+  // e2e/fixtures/). In-container runs (Dockerfile WORKDIR=/app) also resolve
+  // ./fixtures to /app/fixtures, matching the previous behavior. Override
+  // with FIXTURES_DIR for explicit paths.
+  const outDir = process.env.FIXTURES_DIR || './fixtures';
   const outPath = resolve(outDir, 'fixtures.json');
   mkdirSync(dirname(outPath), { recursive: true });
   // lgtm[js/http-to-file-access] — intentional: test fixtures saved for E2E teardown
