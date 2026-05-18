@@ -12,10 +12,15 @@ services:
     ports:
       - "${GITLAB_HOST_PORT:-8080}:80"
     environment:
-      # external_url uses the host-facing port so GitLab-generated URLs
-      # (clone URLs, OAuth callbacks, etc.) match how callers reach it.
+      # external_url uses a nominal hostname (NOT host:port) so nginx
+      # listens on container's port 80 — that's what the port mapping
+      # and healthcheck below expect. Setting external_url to
+      # http://localhost:<port> would force nginx onto that port instead
+      # and break both the mapping and the healthcheck.
+      # The hostname 'gitlab.local' is also what warm-gitlab.yml uses
+      # in CI, keeping local-dev and CI configs aligned.
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://localhost:${GITLAB_HOST_PORT:-8080}'
+        external_url 'http://gitlab.local'
         gitlab_rails['initial_root_password'] = 'E2eTestPassword1!'
         prometheus_monitoring['enable'] = false
         registry['enable'] = false
