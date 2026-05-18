@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-E2E test infrastructure (reincarnation of #63 by @ecthelion77, Olivier Gintrand) plus three pre-existing schema bugs the suite surfaced on first run against GitLab CE 18.x.
+_Nothing yet. New entries land here between releases._
+
+## [0.8.0] - 2026-05-18
+
+E2E test infrastructure (reincarnation of #63 by @ecthelion77, Olivier Gintrand) plus three pre-existing schema bugs the suite surfaced on first run against GitLab CE 18.x. Also includes three operational runbooks (release atomicity recovery, ghcr first-publish, release ceremony) that close #47, #49, #51.
 
 ### Added
 
