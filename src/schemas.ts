@@ -51,11 +51,14 @@ export const GitLabDiscussionsResponseSchema = z.object({
 export type GitLabDiscussionsResponse = z.infer<typeof GitLabDiscussionsResponseSchema>;
 
 // GitLab User
+// Note: avatar_url is documented as `string` in the GitLab API, but GitLab EE
+// can return `null` (e.g. for users without a custom avatar). Keep it nullable
+// to avoid breaking on real EE traffic — see issue #74.
 export const GitLabUserSchema = z.object({
   id: z.number(),
   name: z.string(),
   username: z.string(),
-  avatar_url: z.string().optional(),
+  avatar_url: z.string().nullable().optional(),
   web_url: z.string().optional()
 });
 
@@ -615,7 +618,7 @@ export const GitLabMemberSchema = z.object({
   username: z.string(),
   name: z.string(),
   state: z.string(),
-  avatar_url: z.string().optional(),
+  avatar_url: z.string().nullable().optional(),
   web_url: z.string(),
   access_level: z.number(),
   access_level_description: z.string().optional(),

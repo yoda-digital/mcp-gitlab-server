@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet. New entries land here between releases._
+### Fixed
+
+- **`avatar_url` schema validation against GitLab EE (#74)** — `GitLabUserSchema`
+  and `GitLabMemberSchema` now accept `null` for `avatar_url`. The GitLab API
+  docs declare it as `string`, but GitLab EE returns `null` for users without a
+  custom avatar. Without this fix, `GetMergeRequestChanges`,
+  `list_merge_request_notes`, and `list_merge_request_discussions` throw
+  `Invalid arguments: author.avatar_url: Expected string, received null` on
+  every call. Added regression tests covering both `null` and string values.
 
 ## [0.7.0] - 2026-05-06
 

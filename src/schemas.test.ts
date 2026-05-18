@@ -51,6 +51,9 @@ import {
   CreateGroupSchema,
   UpdateGroupSchema,
   DeleteGroupSchema,
+  // Response Schemas
+  GitLabUserSchema,
+  GitLabMemberSchema,
 } from './schemas.js';
 
 describe('CI/CD Schemas', () => {
@@ -344,6 +347,60 @@ describe('User Schemas', () => {
       });
       expect(valid.search).toBe('john');
       expect(valid.active).toBe(true);
+    });
+  });
+});
+
+// Regression: GitLab EE 17.5.5 returns null for avatar_url on author/assignees/notes
+// where the docs declare it as `string`. See issue #74.
+describe('Response schemas — GitLab EE nullability', () => {
+  describe('GitLabUserSchema', () => {
+    it('accepts a user with null avatar_url (EE behavior)', () => {
+      const parsed = GitLabUserSchema.parse({
+        id: 42,
+        name: 'Ghost User',
+        username: 'ghost',
+        avatar_url: null,
+        web_url: 'https://gitlab.example.com/ghost'
+      });
+      expect(parsed.avatar_url).toBeNull();
+    });
+
+    it('still accepts a user with string avatar_url', () => {
+      const parsed = GitLabUserSchema.parse({
+        id: 1,
+        name: 'Admin',
+        username: 'root',
+        avatar_url: 'https://gitlab.example.com/uploads/-/system/user/avatar/1/avatar.png',
+        web_url: 'https://gitlab.example.com/root'
+      });
+      expect(parsed.avatar_url).toBe('https://gitlab.example.com/uploads/-/system/user/avatar/1/avatar.png');
+    });
+
+    it('still accepts a user with avatar_url omitted', () => {
+      const parsed = GitLabUserSchema.parse({
+        id: 7,
+        name: 'Lite User',
+        username: 'lite',
+        web_url: 'https://gitlab.example.com/lite'
+      });
+      expect(parsed.avatar_url).toBeUndefined();
+    });
+  });
+
+  describe('GitLabMemberSchema', () => {
+    it('accepts a member with null avatar_url', () => {
+      const parsed = GitLabMemberSchema.parse({
+        id: 9,
+        username: 'member',
+        name: 'Project Member',
+        state: 'active',
+        avatar_url: null,
+        web_url: 'https://gitlab.example.com/member',
+        access_level: 30,
+        expires_at: null,
+      });
+      expect(parsed.avatar_url).toBeNull();
     });
   });
 });
