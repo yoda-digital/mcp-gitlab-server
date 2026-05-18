@@ -670,3 +670,58 @@ describe('Transport — CORS origin handling', () => {
     expect(res.headers['access-control-allow-origin']).toBeUndefined();
   });
 });
+
+describe('Transport — PAT + Streamable HTTP per-session factory (#62)', () => {
+  let port: number;
+  let factoryCalls = 0;
+
+  beforeAll(async () => {
+    port = 19800 + Math.floor(Math.random() * 100);
+    process.env.AUTH_MODE = 'pat';
+    process.env.CORS_ALLOW_ORIGINS = '';
+    factoryCalls = 0;
+    // Both `server` (static, signals PAT mode) AND `serverFactory` (per-session)
+    // are passed. The setupTransport contract treats this as "PAT with
+    // per-session factory" — the factory is invoked per session, the static
+    // server argument acts as a mode flag.
+    const staticServer = createTestServer('pat-mode');
+    await setupTransport(staticServer, {
+      port,
+      useStreamableHttp: true,
+      host: '127.0.0.1',
+      serverFactory: () => {
+        factoryCalls++;
+        return createTestServer(`session-${factoryCalls}`);
+      },
+    });
+    await new Promise((r) => setTimeout(r, 50));
+  });
+
+  afterAll(() => {
+    delete process.env.AUTH_MODE;
+    delete process.env.CORS_ALLOW_ORIGINS;
+  });
+
+  it('invokes the factory once per session, without requiring an Authorization header', async () => {
+    const before = factoryCalls;
+    const init = (id: number) => JSON.stringify({
+      jsonrpc: '2.0', id, method: 'initialize',
+      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } }
+    });
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+      // No Authorization header: PAT-mode-with-factory must accept this.
+    };
+
+    const r1 = await request(port, 'POST', '/mcp', headers, init(1));
+    const r2 = await request(port, 'POST', '/mcp', headers, init(2));
+
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(r1.headers['mcp-session-id']).toBeDefined();
+    expect(r2.headers['mcp-session-id']).toBeDefined();
+    expect(r1.headers['mcp-session-id']).not.toBe(r2.headers['mcp-session-id']);
+    expect(factoryCalls - before).toBe(2);
+  });
+});
