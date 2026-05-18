@@ -1,7 +1,12 @@
 import { z } from 'zod';
 
 // Wiki Page Format
-export const WikiPageFormatEnum = z.enum(['markdown', 'rdoc', 'asciidoc', 'org']);
+// GitLab CE 18.x returns 'plaintext' on wiki pages created via API without
+// explicit format, in addition to the 4 documented values. Keeping the enum
+// loose so the schema parses real-world responses; tools that accept format
+// as input still validate against the 4 canonical values via a tighter input
+// schema where needed.
+export const WikiPageFormatEnum = z.enum(['markdown', 'rdoc', 'asciidoc', 'org', 'plaintext']);
 export type WikiPageFormat = z.infer<typeof WikiPageFormatEnum>;
 
 // GitLab Note
@@ -69,6 +74,8 @@ export const GitLabRepositorySchema = z.object({
   id: z.number(),
   name: z.string(),
   description: z.string().nullable(),
+  path: z.string().optional(),
+  path_with_namespace: z.string().optional(),
   web_url: z.string(),
   default_branch: z.string(),
   visibility: z.enum(['private', 'internal', 'public']),
@@ -82,6 +89,19 @@ export const GitLabRepositorySchema = z.object({
 });
 
 export type GitLabRepository = z.infer<typeof GitLabRepositorySchema>;
+
+// MR approval state — returned by /api/v4/projects/:id/merge_requests/:iid/approve|unapprove.
+// GitLab CE returns a small subset (NOT a full MergeRequest object), so the schema is loose.
+export const MergeRequestApprovalStateSchema = z.object({
+  id: z.number().optional(),
+  iid: z.number().optional(),
+  approvals_required: z.number().optional(),
+  approvals_left: z.number().optional(),
+  approved: z.boolean().optional(),
+  approved_by: z.array(z.unknown()).optional(),
+}).passthrough();
+
+export type MergeRequestApprovalState = z.infer<typeof MergeRequestApprovalStateSchema>;
 
 // GitLab Fork
 export const GitLabForkSchema = GitLabRepositorySchema;

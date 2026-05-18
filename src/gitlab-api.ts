@@ -7,6 +7,7 @@ import {
   GitLabRepositorySchema,
   GitLabIssueSchema,
   GitLabMergeRequestSchema,
+  MergeRequestApprovalStateSchema,
   GitLabContentSchema,
   GitLabCreateUpdateFileResponseSchema,
   GitLabSearchResponseSchema,
@@ -31,6 +32,7 @@ import {
   type GitLabRepository,
   type GitLabIssue,
   type GitLabMergeRequest,
+  type MergeRequestApprovalState,
   type GitLabContent,
   type GitLabCreateUpdateFileResponse,
   type GitLabSearchResponse,
@@ -1651,7 +1653,7 @@ export class GitLabApi {
     projectId: string,
     mergeRequestIid: number,
     sha?: string
-  ): Promise<GitLabMergeRequest> {
+  ): Promise<MergeRequestApprovalState> {
     const body: Record<string, string> = {};
     if (sha) {
       body.sha = sha;
@@ -1683,7 +1685,7 @@ export class GitLabApi {
       throw new McpError(ErrorCode.InternalError, errorMessage);
     }
 
-    return GitLabMergeRequestSchema.parse(await response.json());
+    return MergeRequestApprovalStateSchema.parse(await response.json());
   }
 
   /**
@@ -1691,13 +1693,13 @@ export class GitLabApi {
    *
    * @param projectId - The ID or URL-encoded path of the project
    * @param mergeRequestIid - The internal ID of the merge request
-   * @returns A promise that resolves to the merge request details
+   * @returns A promise that resolves to the approval state object returned by GitLab
    * @throws Will throw an error if the GitLab API request fails
    */
   async unapproveMergeRequest(
     projectId: string,
     mergeRequestIid: number
-  ): Promise<GitLabMergeRequest> {
+  ): Promise<MergeRequestApprovalState> {
     const response = await fetch(
       `${this.apiUrl}/projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestIid}/unapprove`,
       {
@@ -1718,7 +1720,11 @@ export class GitLabApi {
       throw new McpError(ErrorCode.InternalError, errorMessage);
     }
 
-    return GitLabMergeRequestSchema.parse(await response.json());
+    // unapprove returns 204 No Content on success on CE; coerce to empty state object
+    if (response.status === 204) {
+      return {};
+    }
+    return MergeRequestApprovalStateSchema.parse(await response.json());
   }
 
   /**
