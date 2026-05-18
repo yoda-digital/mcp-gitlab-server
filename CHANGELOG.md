@@ -7,16 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet. New entries land here between releases._
+
+## [0.7.2] - 2026-05-18
+
+Wiki upload + PAT-mode concurrency fixes. Carries the two contributions from #62 (Olivier Gintrand) with maintainer-side corrections: an explicit `content_encoding` parameter for binary uploads, a schema fallback for older self-hosted GitLab, and regression tests for both fixes.
+
 ### Fixed
 
-- **Wiki attachment upload uses `multipart/form-data`** — the `upload_wiki_attachment`
-  tool was sending JSON with base64 content, causing a 400 from GitLab. Now uses
-  `FormData` + `Blob` as required by the GitLab API. Response schema corrected to
-  match actual API output (`link.url`, `link.markdown`). (#62)
-- **Per-session server factory in PAT + streamable-http mode** — a single `Server`
-  instance was shared across all streamable-http sessions, causing state corruption
-  and crashes. The `serverFactory` closure pattern (already used for OAuth) is now
-  applied to PAT mode when `USE_SSE` or `USE_STREAMABLE_HTTP` is set. (#62)
+- **Wiki attachment upload uses `multipart/form-data`** — the `upload_project_wiki_attachment`
+  and `upload_group_wiki_attachment` tools previously sent JSON with base64 content,
+  causing a 400 from GitLab on every call. Now uses `FormData` + `Blob` as required
+  by the [GitLab wiki attachments API](https://docs.gitlab.com/api/wikis/#upload-an-attachment-to-the-wiki).
+  Originally from #62 by @ecthelion77.
+- **Per-session server factory in PAT + streamable-http mode** — a single shared
+  `Server` instance across streamable-http sessions raised
+  `"Already connected to a transport"` on the second concurrent client and crashed
+  the process. The `serverFactory` closure pattern (already used for OAuth) is now
+  applied to PAT mode when `USE_SSE` or `USE_STREAMABLE_HTTP` is set, so each
+  session gets its own `Server`. Originally from #62 by @ecthelion77.
+
+### Added
+
+- **`content_encoding` parameter on wiki upload tools** — `'utf8'` (default,
+  current behaviour: content treated as raw text/bytes) or `'base64'` (decoded
+  before upload, required for binary files since MCP parameters are JSON strings).
+  No automatic detection: false positives on alphanumeric text would silently
+  corrupt uploads.
+
+### Changed
+
+- **`GitLabWikiAttachment` MCP response shape** — the formatted tool output
+  now exposes `{url, markdown}` (sourced from the modern API's `link` object).
+  The previous `commit_id` field is no longer surfaced. Downstream LLM consumers
+  parsing this output should update accordingly.
+
+### Compatibility
+
+- **Older self-hosted GitLab versions** that return the legacy flat
+  `{commit_id, url}` shape are still parsed correctly. `GitLabWikiAttachmentSchema`
+  accepts either the modern `link.{url, markdown}` envelope or the flat legacy
+  fields; the formatter normalises into a single output shape with a synthesised
+  markdown snippet on legacy paths.
 
 ## [0.7.1] - 2026-05-18
 
