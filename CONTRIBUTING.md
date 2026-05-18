@@ -185,6 +185,60 @@ describe('create_issue tool', () => {
 });
 ```
 
+### Running the E2E suite locally
+
+The repo ships a comprehensive E2E suite under `e2e/` that runs against a real GitLab CE container. CI runs it automatically; the procedure below is for local development.
+
+**Prerequisites:** Docker, Node 22+, ~6 GB free disk, ~8-12 min for a cold GitLab CE boot.
+
+**One-time setup per run:**
+
+```bash
+cd e2e
+
+# If host port 8080 is occupied (e.g. by code-server), pick another:
+# export GITLAB_HOST_PORT=18080
+
+docker compose up -d gitlab
+GITLAB_URL=http://localhost:${GITLAB_HOST_PORT:-8080} \
+  GITLAB_READY_TIMEOUT=900 \
+  bash src/scripts/wait-for-gitlab.sh
+
+npm ci
+export GITLAB_URL=http://localhost:${GITLAB_HOST_PORT:-8080}
+export GITLAB_ROOT_PASSWORD='E2eTestPassword1!'
+npm run provision
+```
+
+**Start the MCP server in another terminal:**
+
+```bash
+export GITLAB_PERSONAL_ACCESS_TOKEN=$(jq -r .token e2e/fixtures/fixtures.json)
+export GITLAB_API_URL=http://localhost:${GITLAB_HOST_PORT:-8080}/api/v4
+export USE_STREAMABLE_HTTP=true
+node dist/index.js
+```
+
+**Run the tests:**
+
+```bash
+cd e2e
+export MCP_SERVER_URL=http://127.0.0.1:3000
+npm test
+```
+
+**Teardown — required between runs:**
+
+```bash
+docker compose down -v   # destroys the GitLab volume
+```
+
+The suite is **not idempotent today** — re-running `npm test` without resetting the volume causes ~50% failures from `409 Conflict` on duplicated POST entities. Always `docker compose down -v` between runs locally. CI is unaffected because it boots a fresh GitLab per workflow run.
+
+### Adding a new tool
+
+When you add a new MCP tool to `src/index.ts`, you MUST also add an E2E test in the appropriate domain file under `e2e/src/tests/`. The coverage gate (`scripts/check-tool-coverage.sh`) wired into `build.yml` will fail the build if a registered tool has no E2E coverage. Premium-only tools (group wikis) can be whitelisted in the script's `EXCLUDED_TOOLS` array with a comment explaining why.
+
 ---
 
 ## 📚 Documentation
@@ -265,6 +319,56 @@ Before submitting:
 - **Documentation** — Is it documented?
 - **Code Quality** — Clean, readable, maintainable?
 - **Breaking Changes** — Are they necessary? Documented?
+
+---
+
+## 🔄 Maintainer rebase pattern (Path B)
+
+When a contributor's PR sits idle for an extended period and `main` drifts (security batches, releases, dependent fixes), the fair move per project policy is for **the maintainer to absorb the rebase cost rather than push it onto the contributor**. This protects contributor velocity from churn the maintainer caused.
+
+The pattern (verified on PRs #62 → #80 and #63 → #81):
+
+1. **Fetch the contributor's branch locally**:
+   ```bash
+   git fetch origin pull/<N>/head:pr-<N>-incoming
+   ```
+
+2. **Create a fresh branch from current `main`**:
+   ```bash
+   git checkout -b feat/<topic>-reincarnation main
+   ```
+
+3. **Cherry-pick the contributor's commits with `-C` so their authorship is preserved**:
+   ```bash
+   git cherry-pick -C <sha>
+   ```
+   Drop commits whose contents are already on `main` via a different path (e.g. an earlier reincarnation). Verify each cherry-pick doesn't restage `src/` files that should stay at main's version.
+
+4. **Apply maintainer corrections as additional commits** in your own name. One commit per finding, conventional-commits style.
+
+5. **Open a new PR** with a title indicating the relationship to the original. PR body MUST include:
+   - Explicit credit to the original contributor and the original PR number
+   - A line-by-line list of changes vs the original (so the contributor can audit your corrections)
+   - A `Co-authored-by: Name <email>` trailer at the bottom (used by the squash merge to preserve credit on the contribution graph)
+
+6. **Merge the new PR**:
+   ```bash
+   gh pr merge <N> --squash --admin --delete-branch
+   ```
+
+7. **Close the original PR** with a credit comment (NOT via the auto-close `Closes #N` keyword — that path silently drops the comment):
+   ```bash
+   gh pr comment <original-N> --body "<credit + explanation>"
+   gh pr close <original-N>
+   ```
+
+8. **Verify `Co-authored-by:` landed in main**:
+   ```bash
+   git show --no-patch --format='%B' <merge-sha> | grep 'Co-authored-by'
+   ```
+   If missing, the public promise to the contributor has been silently broken — fix immediately (the merge commit can be amended or a follow-up commit can add explicit credit).
+
+The discipline is non-negotiable: a public commit-message promise to a contributor is load-bearing trust. Verify integrity before declaring the reincarnation complete.
 
 ---
 
