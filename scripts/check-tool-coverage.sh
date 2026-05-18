@@ -33,8 +33,11 @@ mapfile -t SOURCE_TOOLS < <(
 )
 
 # 2. Extract all tool names called in E2E tests
+#    Match `name: 'foo'` ONLY when it appears within 2 lines after `.callTool(`,
+#    to avoid false positives from unrelated `name:` fields in fixture data
+#    (e.g. release names, branch names, label names) which inflated the count.
 mapfile -t TESTED_TOOLS < <(
-  grep -roh "name: '[^']*'" "$ROOT_DIR/e2e/src/tests/" | sed "s/name: '//;s/'//" | sort -u
+  grep -rA 2 '\.callTool(' "$ROOT_DIR/e2e/src/tests/" | grep -oh "name: '[^']*'" | sed "s/name: '//;s/'//" | sort -u
 )
 
 # 3. Find uncovered tools
