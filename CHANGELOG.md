@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Override `ip-address` to 10.1.1 (GHSA-v2v4-37r5-5v8g, moderate)** — closes
+  the XSS vulnerability in `Address6` HTML-emitting methods. The package is
+  pulled transitively via `@modelcontextprotocol/sdk → express-rate-limit → ip-address`
+  and was pinned at the vulnerable 10.1.0 in the lockfile. Added an `overrides`
+  entry in `package.json` to force the patched version regardless of upstream
+  resolution.
+
 ### Fixed
 
 - **`avatar_url` schema validation against GitLab EE (#74)** — `GitLabUserSchema`

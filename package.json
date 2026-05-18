@@ -54,6 +54,7 @@
   },
   "homepage": "https://opensource.yoda.digital/en/projects/mcp-gitlab-server/",
   "overrides": {
-    "vite": "^8.0.0"
+    "vite": "^8.0.0",
+    "ip-address": "10.1.1"
   }
 }
