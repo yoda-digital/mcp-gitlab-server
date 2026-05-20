@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet. New entries land here between releases._
+
+## [0.8.1] - 2026-05-20
+
+Supply-chain hardening release. Brings `ghcr.io/yoda-digital/mcp-gitlab-server` to enterprise procurement-grade posture (multi-arch, SBOM, SLSA provenance, Sigstore cosign signing, Trivy scanning) and hardens the workflow itself with least-privilege OIDC scoping + SHA-pinned actions. Zero impact on the npm package SDK surface.
+
 ### Added
 
 - **Multi-arch container image** (`linux/amd64,linux/arm64`) — Apple Silicon, AWS Graviton, ARM-based Kubernetes nodes now pull native layers from `ghcr.io/yoda-digital/mcp-gitlab-server` instead of running through QEMU emulation. Closes #52.
