@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet. New entries land here between releases._
+### Added
+
+- **`get_pipeline_summary` tool** — single-call pipeline investigation returning
+  pipeline details, jobs grouped by stage, and log tails for failed jobs. Includes
+  failure pattern detection and `max_failed_jobs_with_logs` cap (default: 5) to
+  prevent context blowup. (#64)
+- **`get_job_log_smart` tool** — intelligent log post-processor that strips ANSI
+  codes, GitLab timestamps, and section markers. Supports `tail`/`head`, section
+  extraction, and `error_only` filtering. (#64)
+- **`list_pipeline_jobs` extension** — new optional `include_log_tail` and
+  `log_tail_lines` parameters. When `include_log_tail=true`, failed jobs include
+  their cleaned log tail directly in the response. (#64)
 
 ## [0.8.1] - 2026-05-20
 

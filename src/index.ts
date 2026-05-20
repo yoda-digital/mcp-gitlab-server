@@ -61,6 +61,8 @@ import {
   ListPipelineJobsSchema,
   GetJobSchema,
   GetJobLogSchema,
+  GetPipelineSummarySchema,
+  GetJobLogSmartSchema,
   RetryJobSchema,
   CancelJobSchema,
   ListEnvironmentsSchema,
@@ -465,7 +467,7 @@ const ALL_TOOLS = [
   // CI/CD: Jobs
   {
     name: "list_pipeline_jobs",
-    description: "List jobs for a specific pipeline",
+    description: "List jobs for a specific pipeline. Use scope=['failed'] and include_log_tail=true for quick failure investigation",
     inputSchema: createJsonSchema(ListPipelineJobsSchema),
     readOnly: true
   },
@@ -477,8 +479,20 @@ const ALL_TOOLS = [
   },
   {
     name: "get_job_log",
-    description: "Get the log/trace output of a job",
+    description: "Get the raw log/trace output of a job",
     inputSchema: createJsonSchema(GetJobLogSchema),
+    readOnly: true
+  },
+  {
+    name: "get_pipeline_summary",
+    description: "Get a complete pipeline investigation summary: pipeline details, jobs grouped by stage, and log tails for failed jobs — all in one call",
+    inputSchema: createJsonSchema(GetPipelineSummarySchema),
+    readOnly: true
+  },
+  {
+    name: "get_job_log_smart",
+    description: "Get a job's log with intelligent filtering: strip ANSI codes/timestamps, extract sections, tail/head, or error-only lines",
+    inputSchema: createJsonSchema(GetJobLogSmartSchema),
     readOnly: true
   },
   {
@@ -1384,12 +1398,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           throw new Error("page must be greater than 0");
         }
 
+        if (args.log_tail_lines !== undefined && (args.log_tail_lines < 1 || args.log_tail_lines > 200)) {
+          throw new Error("log_tail_lines must be between 1 and 200");
+        }
+
         const jobs = await gitlabApi.listPipelineJobs(args.project_id, args.pipeline_id, {
           scope: args.scope,
           include_retried: args.include_retried,
           page: args.page,
           per_page: args.per_page
         });
+
+        // Extension: include log tails for failed jobs if requested
+        if (args.include_log_tail) {
+          const failedJobIds = jobs.items
+            .filter(j => j.status === 'failed')
+            .map(j => j.id);
+          if (failedJobIds.length > 0) {
+            const logTails = await gitlabApi.getJobLogTails(
+              args.project_id,
+              failedJobIds,
+              args.log_tail_lines || 30
+            );
+            const jobsWithLogs = jobs.items.map(j => ({
+              ...j,
+              ...(logTails.has(j.id) ? { log_tail: logTails.get(j.id) } : {})
+            }));
+            return {
+              content: [
+                { type: "text", text: `Found ${jobs.count} jobs (log tails included for ${logTails.size} failed jobs)` },
+                { type: "text", text: JSON.stringify(jobsWithLogs, null, 2) }
+              ]
+            };
+          }
+        }
+
         return formatJobsResponse(jobs);
       }
 
@@ -1403,6 +1446,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const args = GetJobLogSchema.parse(request.params.arguments);
         const log = await gitlabApi.getJobLog(args.project_id, args.job_id);
         return { content: [{ type: "text", text: log }] };
+      }
+
+      case "get_pipeline_summary": {
+        const args = GetPipelineSummarySchema.parse(request.params.arguments);
+
+        if (args.log_lines !== undefined && (args.log_lines < 1 || args.log_lines > 200)) {
+          throw new Error("log_lines must be between 1 and 200");
+        }
+
+        const summary = await gitlabApi.getPipelineSummary(args.project_id, {
+          pipeline_id: args.pipeline_id,
+          ref: args.ref,
+          include_logs: args.include_logs,
+          log_lines: args.log_lines,
+          max_failed_jobs_with_logs: args.max_failed_jobs_with_logs,
+        });
+
+        return { content: [{ type: "text", text: JSON.stringify(summary, null, 2) }] };
+      }
+
+      case "get_job_log_smart": {
+        const args = GetJobLogSmartSchema.parse(request.params.arguments);
+
+        const result = await gitlabApi.getJobLogSmart(args.project_id, args.job_id, {
+          section: args.section,
+          tail: args.tail,
+          head: args.head,
+          strip_ansi: args.strip_ansi,
+          strip_timestamps: args.strip_timestamps,
+          error_only: args.error_only,
+        });
+
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       case "retry_job": {

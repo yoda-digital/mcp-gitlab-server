@@ -2290,6 +2290,285 @@ export class GitLabApi {
   }
 
   // ===========================================================================
+  // CI/CD: Pipeline Investigation (composite tools)
+  // ===========================================================================
+
+  /**
+   * Fetch a pipeline summary with jobs grouped by stage and optional log tails
+   * for failed jobs. Resolves pipeline from ref or pipeline_id.
+   */
+  async getPipelineSummary(
+    projectId: string,
+    options: {
+      pipeline_id?: number;
+      ref?: string;
+      include_logs?: boolean;
+      log_lines?: number;
+      max_failed_jobs_with_logs?: number;
+    } = {}
+  ): Promise<{
+    pipeline: GitLabPipeline;
+    stages: Array<{
+      name: string;
+      status: string;
+      jobs: Array<GitLabJob & { log_tail?: string }>;
+    }>;
+    summary: {
+      total_jobs: number;
+      passed: number;
+      failed: number;
+      skipped: number;
+      manual: number;
+      canceled: number;
+      failure_pattern: string | null;
+    };
+  }> {
+    // 1. Resolve pipeline
+    let pipeline: GitLabPipeline;
+    if (options.pipeline_id) {
+      pipeline = await this.getPipeline(projectId, options.pipeline_id);
+    } else {
+      // Find latest pipeline, optionally filtered by ref
+      const listOpts: { ref?: string; per_page?: number } = { per_page: 1 };
+      if (options.ref) listOpts.ref = options.ref;
+      const result = await this.listPipelines(projectId, listOpts);
+      if (result.items.length === 0) {
+        throw new McpError(ErrorCode.InternalError, `No pipeline found${options.ref ? ` for ref '${options.ref}'` : ''}`);
+      }
+      pipeline = await this.getPipeline(projectId, result.items[0].id);
+    }
+
+    // 2. Fetch all jobs for this pipeline
+    const allJobs: GitLabJob[] = [];
+    let page = 1;
+    while (true) {
+      const batch = await this.listPipelineJobs(projectId, pipeline.id, { per_page: 100, page });
+      allJobs.push(...batch.items);
+      if (allJobs.length >= batch.count || batch.items.length < 100) break;
+      page++;
+    }
+
+    // 3. Group jobs by stage (preserve stage order from pipeline)
+    const stageOrder: string[] = [];
+    const stageMap = new Map<string, Array<GitLabJob & { log_tail?: string }>>();
+    for (const job of allJobs) {
+      if (!stageMap.has(job.stage)) {
+        stageOrder.push(job.stage);
+        stageMap.set(job.stage, []);
+      }
+      stageMap.get(job.stage)!.push(job);
+    }
+
+    // 4. Fetch log tails for failed jobs
+    const includeLogs = options.include_logs !== false;
+    const logLines = Math.min(options.log_lines || 50, 200);
+    const maxLogsToFetch = options.max_failed_jobs_with_logs || 5;
+
+    if (includeLogs) {
+      const failedJobs = allJobs.filter(j => j.status === 'failed');
+      const jobsToFetchLogs = failedJobs.slice(0, maxLogsToFetch);
+
+      await Promise.all(
+        jobsToFetchLogs.map(async (job) => {
+          try {
+            const log = await this.getJobLog(projectId, job.id);
+            const lines = log.split('\n');
+            const tail = lines.slice(-logLines).join('\n');
+            // Find the job in the stageMap and attach log_tail
+            const stageJobs = stageMap.get(job.stage);
+            const target = stageJobs?.find(j => j.id === job.id);
+            if (target) target.log_tail = tail;
+          } catch {
+            // Graceful degradation: if log fetch fails, skip it
+          }
+        })
+      );
+    }
+
+    // 5. Compute summary
+    const failed = allJobs.filter(j => j.status === 'failed');
+    const passed = allJobs.filter(j => j.status === 'success').length;
+    const skipped = allJobs.filter(j => j.status === 'skipped').length;
+    const manual = allJobs.filter(j => j.status === 'manual').length;
+    const canceled = allJobs.filter(j => j.status === 'canceled').length;
+
+    // Detect failure patterns
+    let failurePattern: string | null = null;
+    if (failed.length > 0) {
+      const reasons = failed.map(j => j.failure_reason).filter(Boolean);
+      const uniqueReasons = [...new Set(reasons)];
+      if (uniqueReasons.length === 1 && failed.length > 1) {
+        failurePattern = `All ${failed.length} failures share the same failure_reason: ${uniqueReasons[0]}`;
+      }
+    }
+
+    // 6. Build stage summaries
+    const stages = stageOrder.map(stageName => {
+      const jobs = stageMap.get(stageName)!;
+      const stageStatus = jobs.some(j => j.status === 'failed') ? 'failed' :
+        jobs.every(j => j.status === 'success') ? 'success' :
+        jobs.some(j => j.status === 'running') ? 'running' :
+        jobs.every(j => j.status === 'skipped') ? 'skipped' :
+        jobs.some(j => j.status === 'manual') ? 'manual' : 'pending';
+      return { name: stageName, status: stageStatus, jobs };
+    });
+
+    return {
+      pipeline,
+      stages,
+      summary: {
+        total_jobs: allJobs.length,
+        passed,
+        failed: failed.length,
+        skipped,
+        manual,
+        canceled,
+        failure_pattern: failurePattern,
+      }
+    };
+  }
+
+  /**
+   * Get a job's log with intelligent filtering — strip ANSI codes,
+   * section markers, timestamps, and extract relevant portions.
+   */
+  async getJobLogSmart(
+    projectId: string,
+    jobId: number,
+    options: {
+      section?: string;
+      tail?: number;
+      head?: number;
+      strip_ansi?: boolean;
+      strip_timestamps?: boolean;
+      error_only?: boolean;
+    } = {}
+  ): Promise<{
+    job_id: number;
+    log: string;
+    line_count: number;
+    truncated: boolean;
+    sections_found: string[];
+  }> {
+    const rawLog = await this.getJobLog(projectId, jobId);
+
+    const stripAnsi = options.strip_ansi !== false;
+    const stripTimestamps = options.strip_timestamps !== false;
+
+    let log = rawLog;
+
+    // Strip ANSI escape codes
+    if (stripAnsi) {
+      // eslint-disable-next-line no-control-regex
+      log = log.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+      // Also strip GitLab section markers
+      // eslint-disable-next-line no-control-regex
+      log = log.replace(/section_(start|end):\d+:[^\r\n]*[\r\n]?/g, '');
+    }
+
+    // Strip GitLab timestamp prefixes (format: "2026-05-20T10:30:45.123Z " or similar)
+    if (stripTimestamps) {
+      log = log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*/gm, '');
+    }
+
+    // Extract sections from the log
+    const sectionRegex = /section_start:\d+:([^\r\n]+)/g;
+    const sectionsFound: string[] = [];
+    let sectionMatch;
+    while ((sectionMatch = sectionRegex.exec(rawLog)) !== null) {
+      const sectionName = sectionMatch[1].replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
+      if (sectionName && !sectionsFound.includes(sectionName)) {
+        sectionsFound.push(sectionName);
+      }
+    }
+
+    // Extract specific section if requested
+    if (options.section) {
+      const sectionStart = new RegExp(`section_start:\\d+:${options.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\\n]*\\n?`, 'i');
+      const sectionEnd = new RegExp(`section_end:\\d+:${options.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+      const startMatch = sectionStart.exec(rawLog);
+      if (startMatch) {
+        const startIdx = startMatch.index + startMatch[0].length;
+        const endMatch = sectionEnd.exec(rawLog.slice(startIdx));
+        const endIdx = endMatch ? startIdx + endMatch.index : rawLog.length;
+        log = rawLog.slice(startIdx, endIdx);
+        // Re-apply strip filters
+        if (stripAnsi) {
+          // eslint-disable-next-line no-control-regex
+          log = log.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+          // eslint-disable-next-line no-control-regex
+          log = log.replace(/section_(start|end):\d+:[^\r\n]*[\r\n]?/g, '');
+        }
+        if (stripTimestamps) {
+          log = log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*/gm, '');
+        }
+      }
+    }
+
+    // Error-only extraction
+    if (options.error_only) {
+      const lines = log.split('\n');
+      const errorLines = lines.filter(line => {
+        const lower = line.toLowerCase();
+        return lower.includes('error') || lower.includes('fatal') ||
+          lower.includes('failed') || lower.includes('exception') ||
+          lower.includes('traceback') || lower.includes('panic');
+      });
+      if (errorLines.length > 0) {
+        log = errorLines.join('\n');
+      }
+    }
+
+    // Apply tail/head
+    let truncated = false;
+    const lines = log.split('\n');
+    if (options.tail && options.tail < lines.length) {
+      log = lines.slice(-options.tail).join('\n');
+      truncated = true;
+    } else if (options.head && options.head < lines.length) {
+      log = lines.slice(0, options.head).join('\n');
+      truncated = true;
+    }
+
+    return {
+      job_id: jobId,
+      log,
+      line_count: log.split('\n').length,
+      truncated,
+      sections_found: sectionsFound,
+    };
+  }
+
+  /**
+   * Fetch log tails for jobs (used by list_pipeline_jobs extension).
+   * Returns a map of job_id → log tail string.
+   */
+  async getJobLogTails(
+    projectId: string,
+    jobIds: number[],
+    logLines: number = 30
+  ): Promise<Map<number, string>> {
+    const result = new Map<number, string>();
+    const cappedLines = Math.min(logLines, 200);
+
+    await Promise.all(
+      jobIds.map(async (jobId) => {
+        try {
+          const log = await this.getJobLog(projectId, jobId);
+          // eslint-disable-next-line no-control-regex
+          const cleaned = log.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+          const lines = cleaned.split('\n');
+          result.set(jobId, lines.slice(-cappedLines).join('\n'));
+        } catch {
+          // Graceful degradation
+        }
+      })
+    );
+
+    return result;
+  }
+
+  // ===========================================================================
   // CI/CD: Environments
   // ===========================================================================
 
