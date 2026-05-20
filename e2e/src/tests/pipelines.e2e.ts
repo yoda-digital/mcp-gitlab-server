@@ -373,8 +373,9 @@ describe('Pipeline & Job tools', () => {
       expect(Array.isArray(data.sections_found)).toBe(true);
       // Verify ANSI codes are stripped (should not contain escape sequences)
       expect(data.log).not.toMatch(/\x1B\[/);
-    } catch {
+    } catch (e) {
       // Job trace not available in CI — acceptable
+      console.warn('get_job_log_smart test skipped:', e);
     }
   });
 
@@ -392,8 +393,9 @@ describe('Pipeline & Job tools', () => {
       expect(data.job_id).toBe(jobId);
       // error_only returns either error lines or the full log if no errors detected
       expect(typeof data.log).toBe('string');
-    } catch {
+    } catch (e) {
       // Job trace not available in CI — acceptable
+      console.warn('get_job_log_smart error_only test skipped:', e);
     }
   });
 

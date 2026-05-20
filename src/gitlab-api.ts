@@ -2294,6 +2294,18 @@ export class GitLabApi {
   // ===========================================================================
 
   /**
+   * Clean a raw job log: strip ANSI codes, section markers, and timestamps.
+   */
+  private cleanLog(raw: string): string {
+    // eslint-disable-next-line no-control-regex
+    let log = raw.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+    // eslint-disable-next-line no-control-regex
+    log = log.replace(/section_(start|end):\d+:[^\r\n]*[\r\n]?/g, '');
+    log = log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*/gm, '');
+    return log;
+  }
+
+  /**
    * Fetch a pipeline summary with jobs grouped by stage and optional log tails
    * for failed jobs. Resolves pipeline from ref or pipeline_id.
    */
@@ -2371,8 +2383,9 @@ export class GitLabApi {
       await Promise.all(
         jobsToFetchLogs.map(async (job) => {
           try {
-            const log = await this.getJobLog(projectId, job.id);
-            const lines = log.split('\n');
+            const rawLog = await this.getJobLog(projectId, job.id);
+            const cleaned = this.cleanLog(rawLog);
+            const lines = cleaned.split('\n');
             const tail = lines.slice(-logLines).join('\n');
             // Find the job in the stageMap and attach log_tail
             const stageJobs = stageMap.get(job.stage);
@@ -2455,34 +2468,20 @@ export class GitLabApi {
     const stripAnsi = options.strip_ansi !== false;
     const stripTimestamps = options.strip_timestamps !== false;
 
-    let log = rawLog;
-
-    // Strip ANSI escape codes
-    if (stripAnsi) {
-      // eslint-disable-next-line no-control-regex
-      log = log.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-      // Also strip GitLab section markers
-      // eslint-disable-next-line no-control-regex
-      log = log.replace(/section_(start|end):\d+:[^\r\n]*[\r\n]?/g, '');
-    }
-
-    // Strip GitLab timestamp prefixes (format: "2026-05-20T10:30:45.123Z " or similar)
-    if (stripTimestamps) {
-      log = log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*/gm, '');
-    }
-
-    // Extract sections from the log
+    // Extract sections from the raw log for discoverability, before any stripping
     const sectionRegex = /section_start:\d+:([^\r\n]+)/g;
     const sectionsFound: string[] = [];
     let sectionMatch;
     while ((sectionMatch = sectionRegex.exec(rawLog)) !== null) {
+      // eslint-disable-next-line no-control-regex
       const sectionName = sectionMatch[1].replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
       if (sectionName && !sectionsFound.includes(sectionName)) {
         sectionsFound.push(sectionName);
       }
     }
 
-    // Extract specific section if requested
+    // Determine log content: extract specific section or use full log
+    let log = rawLog;
     if (options.section) {
       const sectionStart = new RegExp(`section_start:\\d+:${options.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\\n]*\\n?`, 'i');
       const sectionEnd = new RegExp(`section_end:\\d+:${options.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
@@ -2492,17 +2491,18 @@ export class GitLabApi {
         const endMatch = sectionEnd.exec(rawLog.slice(startIdx));
         const endIdx = endMatch ? startIdx + endMatch.index : rawLog.length;
         log = rawLog.slice(startIdx, endIdx);
-        // Re-apply strip filters
-        if (stripAnsi) {
-          // eslint-disable-next-line no-control-regex
-          log = log.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-          // eslint-disable-next-line no-control-regex
-          log = log.replace(/section_(start|end):\d+:[^\r\n]*[\r\n]?/g, '');
-        }
-        if (stripTimestamps) {
-          log = log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*/gm, '');
-        }
       }
+    }
+
+    // Apply stripping to the log (either full or sectioned)
+    if (stripAnsi) {
+      // eslint-disable-next-line no-control-regex
+      log = log.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+      // eslint-disable-next-line no-control-regex
+      log = log.replace(/section_(start|end):\d+:[^\r\n]*[\r\n]?/g, '');
+    }
+    if (stripTimestamps) {
+      log = log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*/gm, '');
     }
 
     // Error-only extraction
@@ -2554,9 +2554,8 @@ export class GitLabApi {
     await Promise.all(
       jobIds.map(async (jobId) => {
         try {
-          const log = await this.getJobLog(projectId, jobId);
-          // eslint-disable-next-line no-control-regex
-          const cleaned = log.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+          const rawLog = await this.getJobLog(projectId, jobId);
+          const cleaned = this.cleanLog(rawLog);
           const lines = cleaned.split('\n');
           result.set(jobId, lines.slice(-cappedLines).join('\n'));
         } catch {
