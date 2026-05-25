@@ -1398,10 +1398,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           throw new Error("page must be greater than 0");
         }
 
-        if (args.log_tail_lines !== undefined && (args.log_tail_lines < 1 || args.log_tail_lines > 200)) {
-          throw new Error("log_tail_lines must be between 1 and 200");
-        }
-
         const jobs = await gitlabApi.listPipelineJobs(args.project_id, args.pipeline_id, {
           scope: args.scope,
           include_retried: args.include_retried,
@@ -1414,20 +1410,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           const failedJobIds = jobs.items
             .filter(j => j.status === 'failed')
             .map(j => j.id);
-          if (failedJobIds.length > 0) {
-            const logTails = await gitlabApi.getJobLogTails(
+          const maxJobs = Math.min(args.max_log_tail_jobs ?? 10, 20);
+          const slicedIds = failedJobIds.slice(0, maxJobs);
+          if (slicedIds.length > 0) {
+            const { tails, errors } = await gitlabApi.getJobLogTails(
               args.project_id,
-              failedJobIds,
-              args.log_tail_lines || 30
+              slicedIds,
+              args.log_tail_lines ?? 30
             );
             const jobsWithLogs = jobs.items.map(j => ({
               ...j,
-              ...(logTails.has(j.id) ? { log_tail: logTails.get(j.id) } : {})
+              ...(tails.has(j.id) ? { log_tail: tails.get(j.id) } : {})
             }));
+            const errorSuffix = errors.length > 0 ? `, ${errors.length} log fetch failed` : '';
             return {
               content: [
-                { type: "text", text: `Found ${jobs.count} jobs (log tails included for ${logTails.size} failed jobs)` },
-                { type: "text", text: JSON.stringify(jobsWithLogs, null, 2) }
+                { type: "text", text: `Found ${jobs.count} jobs (log tails: ${tails.size} success${errorSuffix})` },
+                { type: "text", text: JSON.stringify(jobsWithLogs, null, 2) },
+                ...(errors.length > 0 ? [{ type: "text" as const, text: JSON.stringify({ log_fetch_errors: errors }, null, 2) }] : [])
               ]
             };
           }
@@ -1451,15 +1451,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "get_pipeline_summary": {
         const args = GetPipelineSummarySchema.parse(request.params.arguments);
 
-        if (args.log_lines !== undefined && (args.log_lines < 1 || args.log_lines > 200)) {
-          throw new Error("log_lines must be between 1 and 200");
-        }
-
         const summary = await gitlabApi.getPipelineSummary(args.project_id, {
           pipeline_id: args.pipeline_id,
           ref: args.ref,
           include_logs: args.include_logs,
-          log_lines: args.log_lines,
+          log_tail_lines: args.log_tail_lines,
           max_failed_jobs_with_logs: args.max_failed_jobs_with_logs,
         });
 

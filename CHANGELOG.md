@@ -16,9 +16,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`get_job_log_smart` tool** — intelligent log post-processor that strips ANSI
   codes, GitLab timestamps, and section markers. Supports `tail`/`head`, section
   extraction, and `error_only` filtering. (#64)
-- **`list_pipeline_jobs` extension** — new optional `include_log_tail` and
-  `log_tail_lines` parameters. When `include_log_tail=true`, failed jobs include
-  their cleaned log tail directly in the response. (#64)
+- **`list_pipeline_jobs` extension** — new optional `include_log_tail`,
+  `log_tail_lines`, and `max_log_tail_jobs` parameters. When `include_log_tail=true`,
+  failed jobs include their cleaned log tail directly in the response. (#64)
+- **`truncated` field** in `get_pipeline_summary` response — signals when pagination
+  cap (50 pages) was hit and job list may be incomplete.
+- **`section_matched` and `error_lines_matched` fields** in `get_job_log_smart`
+  response — explicit feedback on filter effectiveness.
+- **`log_fetch_errors` field** in pipeline summary — surfaces per-job log fetch
+  failures instead of silently swallowing them.
+
+### Changed
+
+- **Renamed** `log_lines` → `log_tail_lines` in `get_pipeline_summary` schema for
+  consistency with `list_pipeline_jobs`. (#64 review)
+- **`failure_pattern`** is now a discriminated union (`shared_reason | mixed |
+  no_failures | null`) instead of a plain string. (#64 review)
+- **Stage status derivation** now mirrors GitLab's aggregation: `allow_failure`
+  jobs no longer poison the stage; mixed success+skipped collapses to success.
+  (#64 review)
+- **Pagination** no longer relies on `X-Total` header (absent in GitLab EE);
+  uses `items.length < per_page` with a MAX_PAGES=50 safety cap. (#64 review)
+
+### Fixed
+
+- **`error_only` mode** in `get_job_log_smart` now correctly returns an empty log
+  (instead of the full log) when no error-like lines are found. (#64 review)
+- **Silent log fetch failures** — `getJobLogTails` and `getPipelineSummary` now
+  track and report errors per job instead of empty catch blocks. (#64 review)
+- **E2E tests** — assertions moved outside try/catch so test failures propagate
+  correctly; try/catch narrowed to the fetch step only. (#64 review)
+
+### Security
+
+- Schema parameters now have strict `.int().min().max()` bounds to prevent
+  abuse (e.g., `log_tail_lines` capped at 200, `max_log_tail_jobs` at 20).
+- XOR validation via `.refine()` on mutually exclusive parameters
+  (`pipeline_id`/`ref`, `tail`/`head`).
 
 ## [0.8.1] - 2026-05-20
 
