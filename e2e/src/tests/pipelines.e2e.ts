@@ -305,7 +305,7 @@ describe('Pipeline & Job tools', () => {
         total_jobs: number;
         passed: number;
         failed: number;
-        failure_pattern: { kind: string } | null;
+        failure_pattern: { kind: string };
         log_fetch_errors?: Array<{ job_id: number; error: string }>;
       };
     }>(result);
@@ -317,10 +317,9 @@ describe('Pipeline & Job tools', () => {
     expect(data.stages[0].jobs.length).toBeGreaterThan(0);
     expect(data.summary.total_jobs).toBeGreaterThan(0);
     expect(typeof data.truncated).toBe('boolean');
-    // failure_pattern is either null or a discriminated union with 'kind'
-    if (data.summary.failure_pattern !== null) {
-      expect(data.summary.failure_pattern.kind).toBeDefined();
-    }
+    // failure_pattern is always present as a discriminated union with 'kind'
+    expect(data.summary.failure_pattern.kind).toBeDefined();
+    expect(['no_failures', 'single', 'shared_reason', 'mixed', 'unknown']).toContain(data.summary.failure_pattern.kind);
   });
 
   it('get_pipeline_summary — accepts ref parameter', async () => {
@@ -386,14 +385,18 @@ describe('Pipeline & Job tools', () => {
       line_count: number;
       truncated: boolean;
       sections_found: string[];
-      section_matched?: boolean;
-      error_lines_matched?: number;
+      section_matched: boolean | null;
+      error_lines_matched: number | null;
     }>(result);
 
     expect(data.job_id).toBe(jobId);
     expect(data.line_count).toBeGreaterThan(0);
     expect(typeof data.truncated).toBe('boolean');
     expect(Array.isArray(data.sections_found)).toBe(true);
+    // section_matched is null when section param not passed
+    expect(data.section_matched).toBeNull();
+    // error_lines_matched is null when error_only not passed
+    expect(data.error_lines_matched).toBeNull();
     // Verify ANSI codes are stripped (should not contain escape sequences)
     expect(data.log).not.toMatch(/\x1B\[/);
   });
@@ -420,7 +423,7 @@ describe('Pipeline & Job tools', () => {
     const data = extractJson<{
       job_id: number;
       log: string;
-      error_lines_matched: number;
+      error_lines_matched: number | null;
     }>(result);
 
     expect(data.job_id).toBe(jobId);

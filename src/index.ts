@@ -1422,12 +1422,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
               ...j,
               ...(tails.has(j.id) ? { log_tail: tails.get(j.id) } : {})
             }));
-            const errorSuffix = errors.length > 0 ? `, ${errors.length} log fetch failed` : '';
+            const errorSuffix = errors.length > 0 ? `, ${errors.length} failed` : '';
             return {
               content: [
                 { type: "text", text: `Found ${jobs.count} jobs (log tails: ${tails.size} success${errorSuffix})` },
-                { type: "text", text: JSON.stringify(jobsWithLogs, null, 2) },
-                ...(errors.length > 0 ? [{ type: "text" as const, text: JSON.stringify({ log_fetch_errors: errors }, null, 2) }] : [])
+                { type: "text", text: JSON.stringify({
+                  jobs: jobsWithLogs,
+                  ...(errors.length > 0 ? { log_fetch_errors: errors } : {})
+                }, null, 2) }
               ]
             };
           }

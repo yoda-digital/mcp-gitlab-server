@@ -131,12 +131,19 @@ export interface GitLabApiConfig {
 }
 
 /**
+ * Stage status mirrors GitLab's aggregation vocabulary.
+ */
+export type StageStatus = 'failed' | 'running' | 'pending' | 'manual' | 'skipped' | 'canceled' | 'success';
+
+/**
  * Discriminated union for pipeline failure pattern analysis.
  */
 export type FailurePattern =
+  | { kind: 'no_failures' }
+  | { kind: 'single'; reason: string | null; job_id: number }
   | { kind: 'shared_reason'; reason: string; count: number }
   | { kind: 'mixed'; reasons: Record<string, number> }
-  | { kind: 'no_failures' };
+  | { kind: 'unknown'; count: number };
 
 /**
  * Response type for get_pipeline_summary tool.
@@ -145,7 +152,7 @@ export interface PipelineSummaryResponse {
   pipeline: GitLabPipeline;
   stages: Array<{
     name: string;
-    status: string;
+    status: StageStatus;
     jobs: Array<GitLabJob & { log_tail?: string }>;
   }>;
   truncated: boolean;
@@ -156,7 +163,7 @@ export interface PipelineSummaryResponse {
     skipped: number;
     manual: number;
     canceled: number;
-    failure_pattern: FailurePattern | null;
+    failure_pattern: FailurePattern;
     log_fetch_errors?: Array<{ job_id: number; error: string }>;
   };
 }
@@ -170,8 +177,8 @@ export interface JobLogSmartResponse {
   line_count: number;
   truncated: boolean;
   sections_found: string[];
-  section_matched?: boolean;
-  error_lines_matched?: number;
+  section_matched: boolean | null;
+  error_lines_matched: number | null;
 }
 
 /**
@@ -2337,34 +2344,51 @@ export class GitLabApi {
   // CI/CD: Pipeline Investigation (composite tools)
   // ===========================================================================
 
+  /** Strip ANSI escape codes from a log string. */
+  private stripAnsi(log: string): string {
+    // eslint-disable-next-line no-control-regex
+    return log.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+  }
+
+  /** Strip GitLab CI section markers from a log string. */
+  private stripSections(log: string): string {
+    // eslint-disable-next-line no-control-regex
+    return log.replace(/section_(start|end):\d+:[^\r\n]*[\r\n]?/g, '');
+  }
+
+  /** Strip ISO timestamp prefixes from log lines. */
+  private stripTimestamps(log: string): string {
+    return log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*/gm, '');
+  }
+
   /**
    * Clean a raw job log: strip ANSI codes, section markers, and timestamps.
    */
   private cleanLog(raw: string): string {
-    // eslint-disable-next-line no-control-regex
-    let log = raw.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-    // eslint-disable-next-line no-control-regex
-    log = log.replace(/section_(start|end):\d+:[^\r\n]*[\r\n]?/g, '');
-    log = log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*/gm, '');
-    return log;
+    return this.stripTimestamps(this.stripSections(this.stripAnsi(raw)));
   }
 
   /** Discriminated union for failure pattern analysis. */
-  private analyzeFailurePattern(failedJobs: GitLabJob[]): FailurePattern | null {
+  private analyzeFailurePattern(failedJobs: GitLabJob[]): FailurePattern {
     if (failedJobs.length === 0) return { kind: 'no_failures' };
+
+    if (failedJobs.length === 1) {
+      return { kind: 'single', reason: failedJobs[0].failure_reason ?? null, job_id: failedJobs[0].id };
+    }
 
     const reasons = failedJobs.map(j => j.failure_reason).filter(Boolean) as string[];
     const uniqueReasons = [...new Set(reasons)];
 
-    if (uniqueReasons.length === 1 && failedJobs.length > 1) {
-      return { kind: 'shared_reason', reason: uniqueReasons[0], count: failedJobs.length };
+    if (reasons.length === 0) {
+      // N≥2 failed jobs where every failure_reason is missing/empty
+      return { kind: 'unknown', count: failedJobs.length };
     }
-    if (uniqueReasons.length > 1) {
-      const counts: Record<string, number> = {};
-      for (const r of reasons) counts[r] = (counts[r] || 0) + 1;
-      return { kind: 'mixed', reasons: counts };
+    if (uniqueReasons.length === 1) {
+      return { kind: 'shared_reason', reason: uniqueReasons[0], count: reasons.length };
     }
-    return null;
+    const counts: Record<string, number> = {};
+    for (const r of reasons) counts[r] = (counts[r] || 0) + 1;
+    return { kind: 'mixed', reasons: counts };
   }
 
   /**
@@ -2372,7 +2396,7 @@ export class GitLabApi {
    * - allow_failure jobs that failed don't poison the stage
    * - mixed success+skipped+canceled collapses to success
    */
-  private deriveStageStatus(jobs: GitLabJob[]): string {
+  private deriveStageStatus(jobs: GitLabJob[]): StageStatus {
     if (jobs.some(j => j.status === 'failed' && !j.allow_failure)) return 'failed';
     if (jobs.some(j => j.status === 'running')) return 'running';
     if (jobs.some(j => j.status === 'pending' || j.status === 'created')) return 'pending';
@@ -2380,6 +2404,11 @@ export class GitLabApi {
     if (jobs.every(j => j.status === 'skipped')) return 'skipped';
     if (jobs.every(j => j.status === 'canceled')) return 'canceled';
     // mixed success+skipped+canceled+allow_failure-failed all collapse to success
+    if (jobs.every(j => j.status === 'success' || j.status === 'skipped' || j.status === 'canceled' || j.allow_failure)) {
+      return 'success';
+    }
+    // Safety: log unrecognized status mix but conservatively return success
+    console.error(`[deriveStageStatus] Unrecognized job status mix: ${[...new Set(jobs.map(j => j.status))].join(',')}`);
     return 'success';
   }
 
@@ -2532,8 +2561,9 @@ export class GitLabApi {
 
     // Determine log content: extract specific section or use full log
     let log = rawLog;
-    let sectionMatched = true;
+    let sectionMatched: boolean | null = null;
     if (options.section) {
+      sectionMatched = true;
       const sectionStart = new RegExp(`section_start:\\d+:${options.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\\n]*\\n?`, 'i');
       const sectionEnd = new RegExp(`section_end:\\d+:${options.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
       const startMatch = sectionStart.exec(rawLog);
@@ -2544,22 +2574,20 @@ export class GitLabApi {
         log = rawLog.slice(startIdx, endIdx);
       } else {
         sectionMatched = false;
+        log = ''; // don't let filters run on raw log when section was requested but not found
       }
     }
 
-    // Apply stripping (using cleanLog helper components for consistency)
+    // Apply stripping using component helpers for consistency
     if (stripAnsi) {
-      // eslint-disable-next-line no-control-regex
-      log = log.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-      // eslint-disable-next-line no-control-regex
-      log = log.replace(/section_(start|end):\d+:[^\r\n]*[\r\n]?/g, '');
+      log = this.stripSections(this.stripAnsi(log));
     }
     if (stripTimestamps) {
-      log = log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*/gm, '');
+      log = this.stripTimestamps(log);
     }
 
     // Error-only extraction
-    let errorLinesMatched: number | undefined;
+    let errorLinesMatched: number | null = null;
     if (options.error_only) {
       const lines = log.split('\n');
       const errorLines = lines.filter(line => {
@@ -2590,7 +2618,7 @@ export class GitLabApi {
       line_count: log.split('\n').length,
       truncated,
       sections_found: sectionsFound,
-      section_matched: options.section ? sectionMatched : undefined,
+      section_matched: sectionMatched,
       error_lines_matched: errorLinesMatched,
     };
   }
