@@ -300,7 +300,14 @@ describe('Pipeline & Job tools', () => {
     const data = extractJson<{
       pipeline: { id: number; ref: string; status: string };
       stages: Array<{ name: string; status: string; jobs: Array<{ id: number; name: string }> }>;
-      summary: { total_jobs: number; passed: number; failed: number };
+      truncated: boolean;
+      summary: {
+        total_jobs: number;
+        passed: number;
+        failed: number;
+        failure_pattern: { kind: string } | null;
+        log_fetch_errors?: Array<{ job_id: number; error: string }>;
+      };
     }>(result);
 
     expect(data.pipeline.id).toBeGreaterThan(0);
@@ -309,6 +316,11 @@ describe('Pipeline & Job tools', () => {
     expect(data.stages[0].name).toBeDefined();
     expect(data.stages[0].jobs.length).toBeGreaterThan(0);
     expect(data.summary.total_jobs).toBeGreaterThan(0);
+    expect(typeof data.truncated).toBe('boolean');
+    // failure_pattern is either null or a discriminated union with 'kind'
+    if (data.summary.failure_pattern !== null) {
+      expect(data.summary.failure_pattern.kind).toBeDefined();
+    }
   });
 
   it('get_pipeline_summary — accepts ref parameter', async () => {
@@ -350,8 +362,9 @@ describe('Pipeline & Job tools', () => {
     // Wait for job to have produced output
     await new Promise((r) => setTimeout(r, 3000));
 
+    let result;
     try {
-      const result = await globalThis.mcpClient.callTool({
+      result = await globalThis.mcpClient.callTool({
         name: 'get_job_log_smart',
         arguments: {
           project_id: String(globalThis.fixtures.projectId),
@@ -359,29 +372,36 @@ describe('Pipeline & Job tools', () => {
           tail: 10,
         },
       });
-      const data = extractJson<{
-        job_id: number;
-        log: string;
-        line_count: number;
-        truncated: boolean;
-        sections_found: string[];
-      }>(result);
-
-      expect(data.job_id).toBe(jobId);
-      expect(data.line_count).toBeGreaterThan(0);
-      expect(typeof data.truncated).toBe('boolean');
-      expect(Array.isArray(data.sections_found)).toBe(true);
-      // Verify ANSI codes are stripped (should not contain escape sequences)
-      expect(data.log).not.toMatch(/\x1B\[/);
     } catch (e) {
-      // Job trace not available in CI — acceptable
-      console.warn('get_job_log_smart test skipped:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/job (trace|log) (not|unavailable)/i.test(msg) || /404/.test(msg)) {
+        return; // legitimate skip — trace not available in CI
+      }
+      throw e; // real regression
     }
+
+    const data = extractJson<{
+      job_id: number;
+      log: string;
+      line_count: number;
+      truncated: boolean;
+      sections_found: string[];
+      section_matched?: boolean;
+      error_lines_matched?: number;
+    }>(result);
+
+    expect(data.job_id).toBe(jobId);
+    expect(data.line_count).toBeGreaterThan(0);
+    expect(typeof data.truncated).toBe('boolean');
+    expect(Array.isArray(data.sections_found)).toBe(true);
+    // Verify ANSI codes are stripped (should not contain escape sequences)
+    expect(data.log).not.toMatch(/\x1B\[/);
   });
 
-  it('get_job_log_smart — error_only filter works', async () => {
+  it('get_job_log_smart — error_only returns empty log when no errors', async () => {
+    let result;
     try {
-      const result = await globalThis.mcpClient.callTool({
+      result = await globalThis.mcpClient.callTool({
         name: 'get_job_log_smart',
         arguments: {
           project_id: String(globalThis.fixtures.projectId),
@@ -389,13 +409,26 @@ describe('Pipeline & Job tools', () => {
           error_only: true,
         },
       });
-      const data = extractJson<{ job_id: number; log: string }>(result);
-      expect(data.job_id).toBe(jobId);
-      // error_only returns either error lines or the full log if no errors detected
-      expect(typeof data.log).toBe('string');
     } catch (e) {
-      // Job trace not available in CI — acceptable
-      console.warn('get_job_log_smart error_only test skipped:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/job (trace|log) (not|unavailable)/i.test(msg) || /404/.test(msg)) {
+        return; // legitimate skip
+      }
+      throw e;
+    }
+
+    const data = extractJson<{
+      job_id: number;
+      log: string;
+      error_lines_matched: number;
+    }>(result);
+
+    expect(data.job_id).toBe(jobId);
+    expect(typeof data.error_lines_matched).toBe('number');
+    // Our test job echoes "E2E pipeline test" — no error keywords
+    // So error_lines_matched should be 0 and log should be empty
+    if (data.error_lines_matched === 0) {
+      expect(data.log).toBe('');
     }
   });
 
