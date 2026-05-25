@@ -3,6 +3,15 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "enabled": {
+      "type": "boolean",
+      "description": "Enable or disable this subchart when used as a dependency."
+    },
+    "global": {
+      "type": "object",
+      "description": "Global values inherited from parent chart. Not used locally.",
+      "additionalProperties": true
+    },
     "replicaCount": {
       "type": "integer",
       "minimum": 1,
