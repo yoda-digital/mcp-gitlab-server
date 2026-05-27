@@ -6,7 +6,7 @@
  * - list_group_members
  */
 import { describe, it, expect } from 'vitest';
-import { extractJson, extractListItems } from '../helpers/types.js';
+import { extractListItems } from '../helpers/types.js';
 
 describe('Members tools', () => {
   it('list_project_members — returns at least the owner', async () => {

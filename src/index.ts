@@ -1429,8 +1429,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
             tails = result.tails;
             errors = result.errors;
           }
+          // Mirror the exact field subset that formatJobsResponse projects in
+          // the non-include_log_tail path, so the include_log_tail response
+          // surface is consistent (and doesn't leak raw GitLab API fields like
+          // commit/pipeline/user/runner which would waste LLM context).
           const itemsWithLogs = jobs.items.map(j => ({
-            ...j,
+            id: j.id,
+            name: j.name,
+            stage: j.stage,
+            status: j.status,
+            ref: j.ref,
+            created_at: j.created_at,
+            started_at: j.started_at,
+            finished_at: j.finished_at,
+            duration: j.duration,
+            web_url: j.web_url,
+            allow_failure: j.allow_failure,
+            failure_reason: j.failure_reason,
             ...(tails.has(j.id) ? { log_tail: tails.get(j.id) } : {})
           }));
           // Cap signal: when failed jobs exceed max_log_tail_jobs, surface it
