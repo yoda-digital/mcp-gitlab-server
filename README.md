@@ -172,7 +172,13 @@ Every tool response populates BOTH `content[]` (the spec's presentational channe
 
 **Why both fields**: clients that iterate `content[]` and `JSON.parse(content[i].text)` (Claude Desktop, Continue, Cursor, Cline) work unchanged. Clients that consume tool output programmatically without parsing free-form text - MCP gateways like ContextForge, custom integrations - read `structuredContent` directly. The protocol-blessed channel for structured data is used as intended; `content[]` is preserved for transcript display.
 
-**Migration from 0.9.x**: list responses changed from `[{summary text}, {JSON array}]` to a single content item with the `{count, items}` envelope. Any consumer reading `response.content[1].text` and parsing as a JSON array needs to switch to `response.content[0].text` and parse as the wrapper object (or simply read `response.structuredContent`). The `list_pipeline_jobs + include_log_tail` extension renamed its data field from `jobs` to `items` for cross-tool consistency.
+**Migration from 0.9.x**: several presentational shapes changed alongside the addition of `structuredContent`. The simplest migration path for every category below is to switch to `response.structuredContent`, which carries the canonical typed payload and is stable across categories.
+
+1. **`list_*` tools** (20 tools): `[{summary text}, {JSON array}]` collapsed to a single content item with the `{count, items}` envelope. Consumers reading `response.content[1].text` and parsing as a JSON array switch to `response.content[0].text` and parse as the wrapper, or read `response.structuredContent` directly.
+2. **`list_pipeline_jobs + include_log_tail=true`**: the composite list wrapper renamed its data field from `jobs` to `items` for cross-tool consistency. `log_fetch_errors` / `log_fetch_capped` siblings unchanged.
+3. **Non-`list_*` tools that moved to the list envelope** (2 tools): `push_files` and `get_repository_tree` previously returned a bare JSON array (push_files) or the `[{summary text}, {JSON array}]` pair (get_repository_tree). Both now return the same `{count, items}` envelope as `list_*` tools. Consumers iterating the array directly need to read `.items` instead.
+4. **Single-entity tools that lost their human-readable prefix** (2 tools): `get_wiki_page` and `upload_wiki_attachment` previously returned `[{type: "text", text: "Wiki Page: <title>"}, {type: "text", text: <JSON>}]`. Both now return a single content item with the bare JSON entity (no prefix). The same `title` / `file_name` information is carried inside the JSON.
+5. **Status tools and the raw-blob tool**: `delete_branch`, `unprotect_branch`, `delete_project_wiki_page`, `delete_group_wiki_page`, `delete_group`, and `get_job_log` retain their previous `content[0].text` shape (human-readable sentence or raw log) and additionally populate `structuredContent` with typed fields, per the contract above. No `content[]` shape change for these.
 
 ---
 
