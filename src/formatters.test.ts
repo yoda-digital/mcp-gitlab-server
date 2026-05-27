@@ -24,11 +24,23 @@ import {
   formatWikiAttachmentResponse
 } from './formatters.js';
 
-/** Helper: parse the single JSON content item returned by all formatters. */
-function parseResponse(response: { content: Array<{ type: string; text: string }> }) {
+/**
+ * Helper: parse the single JSON content item AND verify structuredContent
+ * is populated with the identical payload. Both must match - that's the
+ * contract that lets content[]-iterating clients AND structuredContent-
+ * reading clients consume the same data.
+ */
+function parseResponse(response: {
+  content: Array<{ type: string; text: string }>;
+  structuredContent?: { [key: string]: unknown };
+}) {
   expect(response.content).toHaveLength(1);
   expect(response.content[0].type).toBe('text');
-  return JSON.parse(response.content[0].text);
+  const fromContent = JSON.parse(response.content[0].text);
+  // structuredContent must be present and structurally equal to content[0]
+  expect(response.structuredContent).toBeDefined();
+  expect(response.structuredContent).toEqual(fromContent);
+  return fromContent;
 }
 
 describe('formatPipelinesResponse', () => {

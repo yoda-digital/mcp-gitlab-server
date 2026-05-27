@@ -24,12 +24,28 @@ import {
 } from './schemas.js';
 
 /**
- * Helper: wraps a JSON-serializable value into a single-item MCP text response.
- * All formatters use this to ensure the response is always a single structured
- * JSON content item — compatible with all MCP clients and gateways.
+ * Helper: wraps a JSON-serializable value into an MCP tool response that
+ * populates BOTH `content[]` (presentational) AND `structuredContent`
+ * (protocol-blessed machine-data slot per the MCP `CallToolResult` schema).
+ *
+ * - `content[0]` is a pretty-printed JSON text block - rendered by clients
+ *   that display the transcript verbatim (Claude Desktop, Continue, etc.)
+ *   and parseable by clients that iterate `content[]` and `JSON.parse`.
+ * - `structuredContent` exposes the same payload as a typed object for
+ *   clients that consume tool output programmatically without reading
+ *   `content[]` - e.g. MCP gateways like ContextForge that look up the
+ *   structured field directly. This is the spec-correct layer for
+ *   machine-data, NOT a workaround for narrow-reading clients.
+ *
+ * Both fields are populated together, so the response is backwards-
+ * compatible with `content[]`-iterating consumers and forward-compatible
+ * with `structuredContent`-aware consumers.
  */
-function jsonResponse(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
+function jsonResponse(data: object) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+    structuredContent: data as { [key: string]: unknown },
+  };
 }
 
 /**
