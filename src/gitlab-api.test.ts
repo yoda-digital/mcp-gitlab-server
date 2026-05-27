@@ -380,6 +380,62 @@ describe('GitLabApi.getJobLogSmart - section marker stripping (CRLF)', () => {
     expect(result.sections_found).not.toContain('script[collapsed=true]');
   });
 
+  it('strips raw `\\x1B[0K` clear-control between section name and LF even without prior ANSI strip (codex R5)', async () => {
+    // When `strip_ansi: false`, stripSections runs on the raw log. GitLab's
+    // section line is `section_*:NNN:name\r\x1B[0K\n` - the regex must
+    // consume the `\x1B[0K` between `\r` and `\n` so no orphan
+    // `\x1B[0K\n` fragments survive in the cleaned output.
+    const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
+    const log =
+      'section_start:1:s\r\x1B[0K\n' +
+      'payload line\n' +
+      'section_end:1:s\r\x1B[0K\n';
+    mockJobLogResponse(log);
+
+    const result = await api.getJobLogSmart('proj', 42, { strip_ansi: false });
+
+    // Section markers + their clear-control bytes are gone entirely
+    expect(result.log).not.toContain('section_start');
+    expect(result.log).not.toContain('section_end');
+    expect(result.log).not.toContain('\x1B[0K');
+    // Real payload preserved
+    expect(result.log).toContain('payload line');
+  });
+
+  it('tail: 1 on a single-line log with trailing newline returns the line content (codex R5)', async () => {
+    // The original logTail walked all `\n` from the end including the
+    // trailing terminator, so `tail: 1` on `"ERROR\n"` returned `""` (the
+    // slice after position 5 / end-of-string). The fix treats a single
+    // trailing `\n` as the terminator + an outer unconditional strip
+    // ensures the `log` field has a stable shape across the truncation
+    // boundary - the same tool no longer sometimes returns `"ERROR\n"`
+    // and sometimes `"ERROR"` for the same content.
+    const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
+    mockJobLogResponse('ERROR\n');
+
+    const result = await api.getJobLogSmart('proj', 42, { tail: 1 });
+
+    expect(result.log).toBe('ERROR');
+    expect(result.line_count).toBe(1);
+    // Critically: log is NOT the empty string (the codex R5 regression)
+    expect(result.log).not.toBe('');
+  });
+
+  it('tail: 50 on a 50-line log returns ALL 50 lines, not 49 (codex R5)', async () => {
+    // The pre-fix bug shaved the last line off every log because the
+    // trailing `\n` was counted as a 51st empty slot.
+    const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
+    const lines = Array.from({ length: 50 }, (_, i) => `line-${i + 1}`);
+    const log = lines.join('\n') + '\n';
+    mockJobLogResponse(log);
+
+    const result = await api.getJobLogSmart('proj', 42, { tail: 50 });
+
+    expect(result.log).toContain('line-50');
+    expect(result.log).toContain('line-1');
+    expect(result.line_count).toBe(50);
+  });
+
   it('strips section markers even when strip_ansi: false (markers are noise regardless of ANSI flag)', async () => {
     // Section stripping is decoupled from the strip_ansi flag - they're
     // independent concerns. A caller debugging raw ANSI output should still

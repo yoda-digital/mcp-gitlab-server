@@ -2379,18 +2379,17 @@ export class GitLabApi {
    *
    * GitLab markers occupy their own line in the format
    *   `section_*:NNN:name\r\x1B[0K\n`
-   * Always pair this with `stripAnsi` first (e.g. via `cleanLog`). After
-   * ANSI removal the marker collapses to `section_*:NNN:name\r\n` and the
-   * `\r?\n?` tail consumes whichever CRLF combination is present (`\r\n`,
-   * `\r`, `\n`, or none), so no orphan blank line is left behind - which
-   * would otherwise shift `tail: N` extraction by one empty line per marker.
-   * If called BEFORE `stripAnsi`, the `\x1B[0K` bytes after the section
-   * name remain unconsumed; that is not a correctness problem for the
-   * current callers but is a footgun for any future direct caller.
+   * The regex tail `\r?(?:\x1B\[[0-9;]*[a-zA-Z])*\n?` consumes the optional
+   * CR, any number of inline ANSI clear-control sequences (typically the
+   * single `\x1B[0K` GitLab emits), and the trailing LF. This works whether
+   * `stripAnsi` was called first (the `\x1B[NNN]` group matches zero times)
+   * or NOT (the group consumes the orphan clear-control before the LF) -
+   * so `get_job_log_smart` with `strip_ansi: false` no longer leaks
+   * `\x1B[0K\n` fragments into the cleaned log.
    */
   private stripSections(log: string): string {
     // eslint-disable-next-line no-control-regex
-    return log.replace(/section_(start|end):\d+:[^\r\n]*\r?\n?/g, '');
+    return log.replace(/section_(start|end):\d+:[^\r\n]*\r?(?:\x1B\[[0-9;]*[a-zA-Z])*\n?/g, '');
   }
 
   /** Strip ISO timestamp prefixes from log lines. */
@@ -2399,49 +2398,56 @@ export class GitLabApi {
   }
 
   /**
-   * Return the last `n` newline-delimited slices of `log` without allocating
-   * an array of all lines. Walks `\n` from the end via `lastIndexOf` so the
-   * memory footprint is O(tail) instead of O(total).
-   *
-   * Behavior matches `log.split('\n').slice(-n).join('\n')` for the cases we
-   * care about, including logs that end with a trailing `\n` (the trailing
-   * empty slice is preserved).
+   * Return the last `n` lines of `log`. A single trailing `\n` is treated
+   * as the line terminator via the `endIdx` bound (NOT via a full
+   * `log.slice(0, -1)` copy) so the memory footprint stays O(tail) instead
+   * of the O(N) regression that allocating a normalized copy would cause.
+   * Without the bound, `tail: 1` on `"ERROR\n"` returns `""` (codex R5).
    */
   private logTail(log: string, n: number): string {
     if (n <= 0 || log === '') return '';
-    let idx = log.length;
+    const endIdx = log.endsWith('\n') ? log.length - 1 : log.length;
+    if (endIdx === 0) return '';
+    let idx = endIdx;
     for (let i = 0; i < n; i++) {
       const nl = log.lastIndexOf('\n', idx - 1);
-      if (nl < 0) return log; // fewer than n lines exist; return the whole log
+      if (nl < 0) return log.slice(0, endIdx);
       idx = nl;
     }
-    return log.slice(idx + 1);
+    return log.slice(idx + 1, endIdx);
   }
 
   /**
-   * Return the first `n` newline-delimited slices of `log` without allocating
-   * an array of all lines. Walks `\n` from the start via `indexOf` so the
-   * memory footprint is O(head) instead of O(total).
+   * Return the first `n` lines of `log`. Mirrors `logTail`: trailing `\n`
+   * is treated as terminator via `endIdx`, and the `nl >= endIdx` guard
+   * keeps a stray `\n` at position `endIdx` from being consumed as a
+   * meaningful line separator. O(head) memory via `indexOf`.
    */
   private logHead(log: string, n: number): string {
     if (n <= 0 || log === '') return '';
+    const endIdx = log.endsWith('\n') ? log.length - 1 : log.length;
+    if (endIdx === 0) return '';
     let idx = -1;
     for (let i = 0; i < n; i++) {
       const nl = log.indexOf('\n', idx + 1);
-      if (nl < 0) return log; // fewer than n lines exist; return the whole log
+      if (nl < 0 || nl >= endIdx) return log.slice(0, endIdx);
       idx = nl;
     }
     return log.slice(0, idx);
   }
 
   /**
-   * Count newline-delimited slices in `log` without allocating substrings.
-   * Matches `log.split('\n').length` for non-empty input; returns 0 for the
-   * empty string (where split would return [''] of length 1).
+   * Count meaningful lines in `log` without allocating substrings.
+   * A trailing `\n` is treated as the terminator of the last line, not as
+   * the start of a new empty line - so `"ERROR\n"` reports 1 line, matching
+   * the contract `logTail` returns. Empty string reports 0 (avoiding the
+   * `''.split('\n').length === 1` JS quirk).
    */
   private countLines(log: string): number {
     if (log === '') return 0;
-    let count = 1;
+    // Start at 0 if the log ends with '\n' (the terminator absorbs the last
+    // line slot); start at 1 otherwise (the unterminated content is one line).
+    let count = log.endsWith('\n') ? 0 : 1;
     for (let i = 0; i < log.length; i++) {
       if (log.charCodeAt(i) === 10 /* \n */) count++;
     }
@@ -2750,6 +2756,14 @@ export class GitLabApi {
         truncated = true;
       }
     }
+
+    // Drop the single trailing '\n' (if present) so the returned `log` field
+    // has a stable shape regardless of which branches ran above. Without
+    // this, tail/head truncation strips the terminator (logTail/logHead use
+    // an `endIdx` bound) while the no-truncation passthrough preserves it -
+    // an asymmetric contract where the same tool sometimes returns `"L\n"`
+    // and sometimes `"L"` for what looks like the same content via line_count.
+    if (log.endsWith('\n')) log = log.slice(0, -1);
 
     return {
       job_id: jobId,
