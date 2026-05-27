@@ -41,10 +41,10 @@ import {
  * compatible with `content[]`-iterating consumers and forward-compatible
  * with `structuredContent`-aware consumers.
  */
-function jsonResponse(data: object) {
+export function jsonResponse<T extends Record<string, unknown>>(data: T) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-    structuredContent: data as { [key: string]: unknown },
+    structuredContent: data,
   };
 }
 

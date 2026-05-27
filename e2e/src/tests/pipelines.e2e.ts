@@ -457,11 +457,13 @@ describe('Pipeline & Job tools', () => {
     // unified `{count, items, log_fetch_errors?, log_fetch_capped?}` envelope
     // - same family shape as every other list-* tool. `items` is the
     // canonical field name (renamed from `jobs` in 0.10.0).
+    // structuredContent MUST mirror content[0] - parity assertion catches drift.
     const data = extractJson<{
       count: number;
       items: Array<{ id: number; name: string; status: string; log_tail?: string }>;
       log_fetch_errors?: Array<{ job_id: number; error: string }>;
     }>(result);
+    expect((result as { structuredContent?: unknown }).structuredContent).toEqual(data);
 
     expect(typeof data.count).toBe('number');
     expect(Array.isArray(data.items)).toBe(true);

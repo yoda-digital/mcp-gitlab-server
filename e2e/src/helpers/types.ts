@@ -86,9 +86,15 @@ export function extractJson<T = unknown>(result: ToolResult): T {
 export function extractListItems<T = unknown>(result: ToolResult): { count: number; items: T[] } {
   const data = extractJson<{ count: number; items: T[] }>(result);
   if (typeof data?.count !== 'number' || !Array.isArray(data?.items)) {
-    throw new Error(
-      `Expected list response shape {count: number, items: T[]}. Got: ${JSON.stringify(data)?.slice(0, 200)}`
-    );
+    // Best-effort preview - JSON.stringify can throw on BigInt/circular,
+    // fall back to a String() coercion so the wrapper error always wins.
+    let preview: string;
+    try {
+      preview = JSON.stringify(data)?.slice(0, 200) ?? String(data);
+    } catch {
+      preview = String(data);
+    }
+    throw new Error(`Expected list response shape {count: number, items: T[]}. Got: ${preview}`);
   }
   return data;
 }

@@ -21,8 +21,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Migration
 
 For external consumers of any `list_*` tool:
-- Read `response.structuredContent` directly (recommended, single source of truth) OR
-- Replace `JSON.parse(response.content[1].text)` with `JSON.parse(response.content[0].text).items`.
+
+**Recommended path** (read the typed-data channel):
+```ts
+const data = response.structuredContent;  // { count, items: T[] }
+data.items.forEach(...);
+```
+
+**Legacy `content[]` path** (parse the presentational text):
+```ts
+// Before (0.9.x): content[1] held a JSON array, the array WAS the data
+const items = JSON.parse(response.content[1].text);
+
+// After (0.10.0): content[0] holds the {count, items} envelope
+const { items } = JSON.parse(response.content[0].text);
+```
+
+The two paths return different shapes: `structuredContent` is the typed wrapper `{ count, items }`; the legacy-path `.items` accessor returns just the array (preserving your 0.9.x shape exactly). Pick whichever fits your consumer code.
 
 For consumers of `list_pipeline_jobs + include_log_tail`:
 - Replace `data.jobs` with `data.items` (field rename for cross-tool consistency).
