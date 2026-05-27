@@ -111,6 +111,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without any signal that more failed jobs existed. (#99 pre-push
   silent-failure-hunter)
 
+### Fixed (round 5)
+
+- **`tail: 1` on a single-line log no longer returns `""`.** The previous
+  `logTail` walked all `\n` from the end including the trailing
+  terminator, so `tail: 1` on `"ERROR\n"` returned the empty string and
+  `log_tail_lines: 50` returned only 49 real lines. `logTail`/`logHead`/
+  `countLines` now treat a single trailing `\n` as the line terminator
+  via an `endIdx` bound, preserving the O(tail) memory promise.
+  (#99 codex P2 round-5)
+- **`stripSections` now consumes `\x1B[0K` clear-control bytes between
+  CR and LF.** When `strip_ansi: false`, the section-stripping path runs
+  on raw GitLab markers `section_*:NNN:name\r\x1B[0K\n` - the previous
+  regex tail `\r?\n?` left orphan `\x1B[0K\n` fragments in the cleaned
+  log. New tail `\r?(?:\x1B\[[0-9;]*[a-zA-Z])*\n?` consumes any inline
+  ANSI escapes between CR and LF, working whether ANSI was pre-stripped
+  or not. (#99 codex P2 round-5)
+- **`get_job_log_smart.log` is shape-stable across the truncation
+  boundary.** The same tool no longer returns `"L\n"` for `tail: 50`
+  (no truncation) and `"L"` for `tail: 49` (truncation kicks in) on the
+  same 50-line input. Unconditional strip of a single trailing `\n` at
+  the end of the helper. (#99 pre-push silent-failure-hunter)
+
 ### Performance
 
 - **Job log tail/head/section/error_only extraction** in
