@@ -32,9 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   consistency with `list_pipeline_jobs`. (#64 review)
 - **`failure_pattern`** is now an exhaustive discriminated union
   (`no_failures | single | shared_reason | mixed | unknown`) instead of a
-  plain string. The `shared_reason` variant carries `unreasoned_count` so
-  callers can tell when some failed jobs lacked a `failure_reason` (vs.
-  every failure sharing the same reason). (#64 review)
+  plain string. Both `shared_reason` and `mixed` variants carry
+  `unreasoned_count` so callers can tell when some failed jobs lacked a
+  `failure_reason` (the invariant `sum(reasons) + unreasoned_count ===
+  failedJobs.length` holds for both). (#64 review + #99 codex)
 - **Stage status derivation** now mirrors GitLab's aggregation: `allow_failure`
   jobs no longer poison the stage; mixed success+skipped collapses to success.
   (#64 review)
@@ -59,6 +60,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`FailurePattern.single.reason`** normalizes empty-string `failure_reason`
   to `null` (was passed through verbatim by `??`). Aligns with `.filter(Boolean)`
   semantics used by the multi-job variants. (#64 round-3 follow-up)
+- **`FailurePattern.mixed`** gains `unreasoned_count` for parity with
+  `shared_reason`. Previously the mixed branch silently dropped failed jobs
+  whose `failure_reason` was missing/empty from the visible reason histogram.
+  (#99 codex)
+
+### Performance
+
+- **Job log tail/head/section/error_only extraction** in
+  `get_pipeline_summary`, `get_job_log_smart`, and `list_pipeline_jobs +
+  include_log_tail` is now O(K) in memory instead of O(N) — the previous
+  `log.split('\n').slice(-N).join('\n')` pattern allocated an array of all
+  lines just to keep the last/first K. New private helpers (`logTail`,
+  `logHead`, `countLines`) walk newlines via `lastIndexOf` / `indexOf` /
+  `charCodeAt`. Section extraction uses `RegExp.lastIndex` instead of
+  `rawLog.slice(startIdx)` to avoid copying multi-MB log strings.
+  `error_only` filtering uses a single `gim` regex match instead of
+  split + filter + join. (#99 gemini)
 
 ### Security
 
