@@ -453,25 +453,28 @@ describe('Pipeline & Job tools', () => {
       },
     });
 
-    // Contract: when include_log_tail=true, response shape is ALWAYS
-    // { jobs: [...], log_fetch_errors?: [...] } regardless of whether failed
-    // jobs exist or log fetches errored. Verifies the round-3 fallback fix.
+    // Contract (0.10.0): when include_log_tail=true, response is ALWAYS the
+    // unified `{count, items, log_fetch_errors?, log_fetch_capped?}` envelope
+    // - same family shape as every other list-* tool. `items` is the
+    // canonical field name (renamed from `jobs` in 0.10.0).
     const data = extractJson<{
-      jobs: Array<{ id: number; name: string; status: string; log_tail?: string }>;
+      count: number;
+      items: Array<{ id: number; name: string; status: string; log_tail?: string }>;
       log_fetch_errors?: Array<{ job_id: number; error: string }>;
     }>(result);
 
-    expect(Array.isArray(data.jobs)).toBe(true);
-    expect(data.jobs.length).toBeGreaterThan(0);
+    expect(typeof data.count).toBe('number');
+    expect(Array.isArray(data.items)).toBe(true);
+    expect(data.items.length).toBeGreaterThan(0);
     // Every job in the wrapper has at least id/name/status from the base schema
-    for (const job of data.jobs) {
+    for (const job of data.items) {
       expect(typeof job.id).toBe('number');
       expect(typeof job.name).toBe('string');
       expect(typeof job.status).toBe('string');
     }
     // If any failed jobs were present, they should carry log_tail (best-effort)
-    const failedWithLogs = data.jobs.filter(j => j.status === 'failed' && typeof j.log_tail === 'string');
-    const failedTotal = data.jobs.filter(j => j.status === 'failed').length;
+    const failedWithLogs = data.items.filter(j => j.status === 'failed' && typeof j.log_tail === 'string');
+    const failedTotal = data.items.filter(j => j.status === 'failed').length;
     if (failedTotal > 0) {
       // log_tail attachment is best-effort; either tails populated or errors recorded
       const errorsLen = data.log_fetch_errors?.length ?? 0;
@@ -494,14 +497,16 @@ describe('Pipeline & Job tools', () => {
       },
     });
 
-    // The response MUST be the wrapper shape, not a flat array
+    // The response MUST be the wrapper shape (post-0.10.0 unification), not a flat array
     const data = extractJson<{
-      jobs: unknown;
+      count: number;
+      items: unknown;
       log_fetch_errors?: unknown;
     }>(result);
 
-    expect(data).toHaveProperty('jobs');
-    expect(Array.isArray(data.jobs)).toBe(true);
+    expect(data).toHaveProperty('count');
+    expect(data).toHaveProperty('items');
+    expect(Array.isArray(data.items)).toBe(true);
     // No failed jobs → no log_fetch_errors field expected
     expect(data.log_fetch_errors).toBeUndefined();
   });
