@@ -7,7 +7,151 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet. New entries land here between releases._
+### Added
+
+- **`get_pipeline_summary` tool** — single-call pipeline investigation returning
+  pipeline details, jobs grouped by stage, and log tails for failed jobs. Includes
+  failure pattern detection and `max_failed_jobs_with_logs` cap (default: 5) to
+  prevent context blowup. (#64)
+- **`get_job_log_smart` tool** — intelligent log post-processor that strips ANSI
+  codes, GitLab timestamps, and section markers. Supports `tail`/`head`, section
+  extraction, and `error_only` filtering. (#64)
+- **`list_pipeline_jobs` extension** — new optional `include_log_tail`,
+  `log_tail_lines`, and `max_log_tail_jobs` parameters. When `include_log_tail=true`,
+  failed jobs include their cleaned log tail directly in the response. (#64)
+- **`truncated` field** in `get_pipeline_summary` response — signals when pagination
+  cap (50 pages) was hit and job list may be incomplete.
+- **`section_matched` and `error_lines_matched` fields** in `get_job_log_smart`
+  response — explicit feedback on filter effectiveness.
+- **`log_fetch_errors` field** in pipeline summary — surfaces per-job log fetch
+  failures instead of silently swallowing them.
+
+### Changed
+
+- **Renamed** `log_lines` → `log_tail_lines` in `get_pipeline_summary` schema for
+  consistency with `list_pipeline_jobs`. (#64 review)
+- **`failure_pattern`** is now an exhaustive discriminated union
+  (`no_failures | single | shared_reason | mixed | unknown`) instead of a
+  plain string. Both `shared_reason` and `mixed` variants carry
+  `unreasoned_count` so callers can tell when some failed jobs lacked a
+  `failure_reason` (the invariant `sum(reasons) + unreasoned_count ===
+  failedJobs.length` holds for both). (#64 review + #99 codex)
+- **Stage status derivation** now mirrors GitLab's aggregation: `allow_failure`
+  jobs no longer poison the stage; mixed success+skipped collapses to success.
+  (#64 review)
+- **Pagination** no longer relies on `X-Total` header (absent in GitLab EE);
+  uses `items.length < per_page` with a MAX_PAGES=50 safety cap. (#64 review)
+
+### Fixed
+
+- **`error_only` mode** in `get_job_log_smart` now correctly returns an empty log
+  (instead of the full log) when no error-like lines are found. (#64 review)
+- **Silent log fetch failures** — `getJobLogTails` and `getPipelineSummary` now
+  track and report errors per job instead of empty catch blocks. (#64 review)
+- **E2E tests** — assertions moved outside try/catch so test failures propagate
+  correctly; try/catch narrowed to the fetch step only. (#64 review)
+- **`list_pipeline_jobs` (`include_log_tail=true`)** now always emits the
+  unified `{jobs, log_fetch_errors?}` wrapper, including the zero-failed-jobs
+  fallback path that previously reverted to the legacy flat-array shape.
+  (#64 round-3 follow-up)
+- **`get_job_log_smart`** returns `line_count: 0` for an empty log instead of
+  the JS-quirk `1` from `''.split('\n')`. Faithful counts on the
+  section-not-found and `error_only` no-match paths. (#64 round-3 follow-up)
+- **`FailurePattern.single.reason`** normalizes empty-string `failure_reason`
+  to `null` (was passed through verbatim by `??`). Aligns with `.filter(Boolean)`
+  semantics used by the multi-job variants. (#64 round-3 follow-up)
+- **`FailurePattern.mixed`** gains `unreasoned_count` for parity with
+  `shared_reason`. Previously the mixed branch silently dropped failed jobs
+  whose `failure_reason` was missing/empty from the visible reason histogram.
+  (#99 codex)
+- **`get_job_log_smart` section extraction is now exact-match.** The previous
+  regex `section_start:\d+:NAME[^\n]*\n?` accepted a prefix match - requesting
+  `section: "build"` would silently return `build_extra` content with
+  `section_matched: true`. Now uses a lookahead `(?=[\r\n\[]|$)` after the
+  name to require GitLab's actual section delimiters. (#99 codex P2 round-2)
+- **`stripSections` now consumes both CR and LF after the marker.** GitLab's
+  section line `section_*:NNN:name\r\x1B[0K\n` collapses to
+  `section_*:NNN:name\r\n` after ANSI stripping; the previous regex tail
+  `[\r\n]?` consumed only one of CR/LF, leaving an orphan `\n` per marker.
+  Cleaned logs had spurious blank lines and `tail: N` could shift by an
+  empty line. New regex tail `\r?\n?` consumes the full CRLF combo.
+  (#99 codex P2 round-3)
+- **`sections_found` surfaces the bare section name.** Previously emitted
+  `"script[collapsed=true]"` verbatim, which is unusable as a follow-up
+  `section:` argument (end markers never carry the `[option]` suffix and
+  would never match). Now strips the `[...]` collapsed-marker tail after
+  ANSI removal. (#99 codex P2 round-4)
+- **`pipeline_id: 0` no longer silently falls through to "latest pipeline".**
+  Schema now requires `z.number().int().positive()` and the runtime path
+  selector uses `!== undefined`. Previously a JS truthy check disagreed
+  with the schema's XOR refine. (#99 pre-push silent-failure-hunter)
+- **`section: ""` no longer silently skipped.** Schema now requires
+  `z.string().min(1)`; empty-string requests fail at parse instead of
+  silently returning the full log with `section_matched: null`.
+  (#99 pre-push silent-failure-hunter)
+- **`section` matching is now case-SENSITIVE.** Dropped the regex `i` flag.
+  GitLab section names are identifiers and case-insensitive matching
+  would create silent ambiguity between sibling sections like `Build`
+  and `build`. Aligns with the "exact-match" contract introduced in the
+  codex P2 round-2 fix. (#99 pre-push silent-failure-hunter LOW-2)
+- **Section markers are stripped regardless of `strip_ansi`.** Previously
+  section-marker stripping was bound to the `strip_ansi: true` path; a
+  caller debugging raw ANSI output would see raw `section_start:NNN:name`
+  bytes leak into `tail`/`head` windows. Section markers are unconditionally
+  noise and are now always stripped. (#99 pre-push code-simplifier)
+
+### Added
+
+- **`log_fetch_capped` field** in `get_pipeline_summary` summary and in
+  the `list_pipeline_jobs + include_log_tail` wrapper. Present as
+  `{ fetched: number; total_failed: number }` when the helper intentionally
+  skipped log-fetching for failed jobs beyond the cap
+  (`max_failed_jobs_with_logs` default 5, `max_log_tail_jobs` default 10).
+  Closes a silent fallback where callers saw a partial set of log tails
+  without any signal that more failed jobs existed. (#99 pre-push
+  silent-failure-hunter)
+
+### Fixed (round 5)
+
+- **`tail: 1` on a single-line log no longer returns `""`.** The previous
+  `logTail` walked all `\n` from the end including the trailing
+  terminator, so `tail: 1` on `"ERROR\n"` returned the empty string and
+  `log_tail_lines: 50` returned only 49 real lines. `logTail`/`logHead`/
+  `countLines` now treat a single trailing `\n` as the line terminator
+  via an `endIdx` bound, preserving the O(tail) memory promise.
+  (#99 codex P2 round-5)
+- **`stripSections` now consumes `\x1B[0K` clear-control bytes between
+  CR and LF.** When `strip_ansi: false`, the section-stripping path runs
+  on raw GitLab markers `section_*:NNN:name\r\x1B[0K\n` - the previous
+  regex tail `\r?\n?` left orphan `\x1B[0K\n` fragments in the cleaned
+  log. New tail `\r?(?:\x1B\[[0-9;]*[a-zA-Z])*\n?` consumes any inline
+  ANSI escapes between CR and LF, working whether ANSI was pre-stripped
+  or not. (#99 codex P2 round-5)
+- **`get_job_log_smart.log` is shape-stable across the truncation
+  boundary.** The same tool no longer returns `"L\n"` for `tail: 50`
+  (no truncation) and `"L"` for `tail: 49` (truncation kicks in) on the
+  same 50-line input. Unconditional strip of a single trailing `\n` at
+  the end of the helper. (#99 pre-push silent-failure-hunter)
+
+### Performance
+
+- **Job log tail/head/section/error_only extraction** in
+  `get_pipeline_summary`, `get_job_log_smart`, and `list_pipeline_jobs +
+  include_log_tail` is now O(K) in memory instead of O(N) — the previous
+  `log.split('\n').slice(-N).join('\n')` pattern allocated an array of all
+  lines just to keep the last/first K. New private helpers (`logTail`,
+  `logHead`, `countLines`) walk newlines via `lastIndexOf` / `indexOf` /
+  `charCodeAt`. Section extraction uses `RegExp.lastIndex` instead of
+  `rawLog.slice(startIdx)` to avoid copying multi-MB log strings.
+  `error_only` filtering uses a single `gim` regex match instead of
+  split + filter + join. (#99 gemini)
+
+### Security
+
+- Schema parameters now have strict `.int().min().max()` bounds to prevent
+  abuse (e.g., `log_tail_lines` capped at 200, `max_log_tail_jobs` at 20).
+- XOR validation via `.refine()` on mutually exclusive parameters
+  (`pipeline_id`/`ref`, `tail`/`head`).
 
 ## [0.8.1] - 2026-05-20
 

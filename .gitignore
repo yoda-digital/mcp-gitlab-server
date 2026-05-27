@@ -67,3 +67,4 @@ implementation/
 mempalace.yaml
 .mempalace/
 entities.json
+.helm-pkg/

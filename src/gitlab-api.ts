@@ -131,6 +131,81 @@ export interface GitLabApiConfig {
 }
 
 /**
+ * Stage status mirrors GitLab's aggregation vocabulary.
+ */
+export type StageStatus = 'failed' | 'running' | 'pending' | 'manual' | 'skipped' | 'canceled' | 'success';
+
+/**
+ * Discriminated union for pipeline failure pattern analysis.
+ *
+ * Variants:
+ * - `no_failures`: zero failed jobs in the pipeline.
+ * - `single`: exactly one failed job. `reason` is `null` when GitLab returned no
+ *   `failure_reason` (or an empty string). `job_id` lets the caller fetch the log.
+ * - `shared_reason`: N≥2 failed jobs that all carry the same `failure_reason`.
+ *   `count` is the number of jobs carrying the reason. `unreasoned_count` is the
+ *   number of failed jobs with no `failure_reason` populated (≥0). When
+ *   `unreasoned_count === 0` every failure matches the diagnosis; when > 0, some
+ *   failures could not be characterized.
+ * - `mixed`: N≥2 failed jobs with at least two distinct `failure_reason` values.
+ *   `reasons` maps each reason to its count. `unreasoned_count` is the number of
+ *   failed jobs whose `failure_reason` was missing/empty and could not be
+ *   bucketed into `reasons` (≥0); `sum(reasons) + unreasoned_count` equals the
+ *   total number of failed jobs.
+ * - `unknown`: N≥2 failed jobs where every `failure_reason` is missing/empty.
+ *   GitLab gave us nothing to characterize; `count` is the total failure count.
+ */
+export type FailurePattern =
+  | { kind: 'no_failures' }
+  | { kind: 'single'; reason: string | null; job_id: number }
+  | { kind: 'shared_reason'; reason: string; count: number; unreasoned_count: number }
+  | { kind: 'mixed'; reasons: Record<string, number>; unreasoned_count: number }
+  | { kind: 'unknown'; count: number };
+
+/**
+ * Response type for get_pipeline_summary tool.
+ */
+export interface PipelineSummaryResponse {
+  pipeline: GitLabPipeline;
+  stages: Array<{
+    name: string;
+    status: StageStatus;
+    jobs: Array<GitLabJob & { log_tail?: string }>;
+  }>;
+  truncated: boolean;
+  summary: {
+    total_jobs: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+    manual: number;
+    canceled: number;
+    failure_pattern: FailurePattern;
+    log_fetch_errors?: Array<{ job_id: number; error: string }>;
+    /**
+     * Present when `failed > max_failed_jobs_with_logs` and the helper
+     * intentionally skipped fetching logs for the trailing failures (cap
+     * default 5). `fetched` is how many had logs attached; `total_failed`
+     * is the full failure count. Absence means no cap-skipping happened.
+     */
+    log_fetch_capped?: { fetched: number; total_failed: number };
+  };
+}
+
+/**
+ * Response type for get_job_log_smart tool.
+ */
+export interface JobLogSmartResponse {
+  job_id: number;
+  log: string;
+  line_count: number;
+  truncated: boolean;
+  sections_found: string[];
+  section_matched: boolean | null;
+  error_lines_matched: number | null;
+}
+
+/**
  * GitLab API client for interacting with GitLab resources
  */
 export class GitLabApi {
@@ -2287,6 +2362,447 @@ export class GitLabApi {
     }
 
     return GitLabJobSchema.parse(await response.json());
+  }
+
+  // ===========================================================================
+  // CI/CD: Pipeline Investigation (composite tools)
+  // ===========================================================================
+
+  /** Strip ANSI escape codes from a log string. */
+  private stripAnsi(log: string): string {
+    // eslint-disable-next-line no-control-regex
+    return log.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+  }
+
+  /**
+   * Strip GitLab CI section markers from a log string.
+   *
+   * GitLab markers occupy their own line in the format
+   *   `section_*:NNN:name\r\x1B[0K\n`
+   * The regex tail `\r?(?:\x1B\[[0-9;]*[a-zA-Z])*\n?` consumes the optional
+   * CR, any number of inline ANSI clear-control sequences (typically the
+   * single `\x1B[0K` GitLab emits), and the trailing LF. This works whether
+   * `stripAnsi` was called first (the `\x1B[NNN]` group matches zero times)
+   * or NOT (the group consumes the orphan clear-control before the LF) -
+   * so `get_job_log_smart` with `strip_ansi: false` no longer leaks
+   * `\x1B[0K\n` fragments into the cleaned log.
+   */
+  private stripSections(log: string): string {
+    // eslint-disable-next-line no-control-regex
+    return log.replace(/section_(start|end):\d+:[^\r\n]*\r?(?:\x1B\[[0-9;]*[a-zA-Z])*\n?/g, '');
+  }
+
+  /** Strip ISO timestamp prefixes from log lines. */
+  private stripTimestamps(log: string): string {
+    return log.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*/gm, '');
+  }
+
+  /**
+   * Return the last `n` lines of `log`. A single trailing `\n` is treated
+   * as the line terminator via the `endIdx` bound (NOT via a full
+   * `log.slice(0, -1)` copy) so the memory footprint stays O(tail) instead
+   * of the O(N) regression that allocating a normalized copy would cause.
+   * Without the bound, `tail: 1` on `"ERROR\n"` returns `""` (codex R5).
+   */
+  private logTail(log: string, n: number): string {
+    if (n <= 0 || log === '') return '';
+    const endIdx = log.endsWith('\n') ? log.length - 1 : log.length;
+    if (endIdx === 0) return '';
+    let idx = endIdx;
+    for (let i = 0; i < n; i++) {
+      const nl = log.lastIndexOf('\n', idx - 1);
+      if (nl < 0) return log.slice(0, endIdx);
+      idx = nl;
+    }
+    return log.slice(idx + 1, endIdx);
+  }
+
+  /**
+   * Return the first `n` lines of `log`. Mirrors `logTail`: trailing `\n`
+   * is treated as terminator via `endIdx`, and the `nl >= endIdx` guard
+   * keeps a stray `\n` at position `endIdx` from being consumed as a
+   * meaningful line separator. O(head) memory via `indexOf`.
+   */
+  private logHead(log: string, n: number): string {
+    if (n <= 0 || log === '') return '';
+    const endIdx = log.endsWith('\n') ? log.length - 1 : log.length;
+    if (endIdx === 0) return '';
+    let idx = -1;
+    for (let i = 0; i < n; i++) {
+      const nl = log.indexOf('\n', idx + 1);
+      if (nl < 0 || nl >= endIdx) return log.slice(0, endIdx);
+      idx = nl;
+    }
+    return log.slice(0, idx);
+  }
+
+  /**
+   * Count meaningful lines in `log` without allocating substrings.
+   * A trailing `\n` is treated as the terminator of the last line, not as
+   * the start of a new empty line - so `"ERROR\n"` reports 1 line, matching
+   * the contract `logTail` returns. Empty string reports 0 (avoiding the
+   * `''.split('\n').length === 1` JS quirk).
+   */
+  private countLines(log: string): number {
+    if (log === '') return 0;
+    // Start at 0 if the log ends with '\n' (the terminator absorbs the last
+    // line slot); start at 1 otherwise (the unterminated content is one line).
+    let count = log.endsWith('\n') ? 0 : 1;
+    for (let i = 0; i < log.length; i++) {
+      if (log.charCodeAt(i) === 10 /* \n */) count++;
+    }
+    return count;
+  }
+
+  /**
+   * Clean a raw job log: strip ANSI codes, section markers, and timestamps.
+   */
+  private cleanLog(raw: string): string {
+    return this.stripTimestamps(this.stripSections(this.stripAnsi(raw)));
+  }
+
+  /**
+   * Analyze a set of failed jobs and return a discriminated FailurePattern.
+   * `failure_reason` values that are null, undefined, or empty string are
+   * treated as "unreasoned" - they do not contribute to the reason histogram
+   * but their count is preserved via `unreasoned_count` on shared_reason or
+   * the `unknown` variant.
+   */
+  private analyzeFailurePattern(failedJobs: GitLabJob[]): FailurePattern {
+    if (failedJobs.length === 0) return { kind: 'no_failures' };
+
+    if (failedJobs.length === 1) {
+      // Normalize empty-string failure_reason to null so the contract reads as
+      // "either we have a reason string, or we have no reason at all".
+      return { kind: 'single', reason: failedJobs[0].failure_reason || null, job_id: failedJobs[0].id };
+    }
+
+    const reasons = failedJobs.map(j => j.failure_reason).filter(Boolean) as string[];
+    const unreasonedCount = failedJobs.length - reasons.length;
+
+    if (reasons.length === 0) {
+      // N≥2 failed jobs where every failure_reason is missing/empty
+      return { kind: 'unknown', count: failedJobs.length };
+    }
+    const uniqueReasons = [...new Set(reasons)];
+    if (uniqueReasons.length === 1) {
+      return {
+        kind: 'shared_reason',
+        reason: uniqueReasons[0],
+        count: reasons.length,
+        unreasoned_count: unreasonedCount,
+      };
+    }
+    const counts: Record<string, number> = {};
+    for (const r of reasons) counts[r] = (counts[r] || 0) + 1;
+    return { kind: 'mixed', reasons: counts, unreasoned_count: unreasonedCount };
+  }
+
+  /**
+   * Derive stage status from its jobs, mirroring GitLab's aggregation logic:
+   * - `allow_failure: true` jobs that failed do NOT poison the stage to 'failed'
+   * - mixed success+skipped+canceled+allow_failure-failed all collapse to 'success'
+   * - The final safety branch is unreachable in practice when jobs are validated
+   *   by `JobStatusEnum` (closed enum at src/schemas.ts). It exists as a
+   *   schema-drift canary: if GitLab ever returns a new status value AND the
+   *   schema is relaxed to accept it, the unrecognized mix is logged via
+   *   `console.error` and the function conservatively returns 'success' rather
+   *   than throwing.
+   */
+  private deriveStageStatus(jobs: GitLabJob[]): StageStatus {
+    if (jobs.some(j => j.status === 'failed' && !j.allow_failure)) return 'failed';
+    if (jobs.some(j => j.status === 'running')) return 'running';
+    if (jobs.some(j => j.status === 'pending' || j.status === 'created')) return 'pending';
+    if (jobs.some(j => j.status === 'manual')) return 'manual';
+    if (jobs.every(j => j.status === 'skipped')) return 'skipped';
+    if (jobs.every(j => j.status === 'canceled')) return 'canceled';
+    // mixed success+skipped+canceled+allow_failure-failed all collapse to success
+    if (jobs.every(j => j.status === 'success' || j.status === 'skipped' || j.status === 'canceled' || j.allow_failure)) {
+      return 'success';
+    }
+    // Safety: log unrecognized status mix but conservatively return success
+    console.error(`[deriveStageStatus] Unrecognized job status mix: ${[...new Set(jobs.map(j => j.status))].join(',')}`);
+    return 'success';
+  }
+
+  /**
+   * Fetch a pipeline summary with jobs grouped by stage and optional log tails
+   * for failed jobs. Resolves pipeline from ref or pipeline_id.
+   */
+  async getPipelineSummary(
+    projectId: string,
+    options: {
+      pipeline_id?: number;
+      ref?: string;
+      include_logs?: boolean;
+      log_tail_lines?: number;
+      max_failed_jobs_with_logs?: number;
+    } = {}
+  ): Promise<PipelineSummaryResponse> {
+    // 1. Resolve pipeline. Use `!== undefined` so `pipeline_id: 0` is treated
+    // as a real value (and rejected by schema's .int().positive() guard) rather
+    // than silently falling through to "find latest pipeline".
+    let pipeline: GitLabPipeline;
+    if (options.pipeline_id !== undefined) {
+      pipeline = await this.getPipeline(projectId, options.pipeline_id);
+    } else {
+      const listOpts: { ref?: string; per_page?: number } = { per_page: 1 };
+      if (options.ref) listOpts.ref = options.ref;
+      const result = await this.listPipelines(projectId, listOpts);
+      if (result.items.length === 0) {
+        throw new McpError(ErrorCode.InternalError, `No pipeline found${options.ref ? ` for ref '${options.ref}'` : ''}`);
+      }
+      pipeline = await this.getPipeline(projectId, result.items[0].id);
+    }
+
+    // 2. Fetch all jobs — paginate without relying on X-Total (may be absent in EE)
+    const MAX_PAGES = 50;
+    const allJobs: GitLabJob[] = [];
+    let page = 1;
+    let truncated = false;
+    while (page <= MAX_PAGES) {
+      const batch = await this.listPipelineJobs(projectId, pipeline.id, { per_page: 100, page });
+      allJobs.push(...batch.items);
+      if (batch.items.length < 100) break;
+      page++;
+    }
+    if (page > MAX_PAGES) {
+      truncated = true;
+      console.error(`[get_pipeline_summary] Pagination cap reached (${MAX_PAGES} pages) for pipeline ${pipeline.id}`);
+    }
+
+    // 3. Group jobs by stage
+    const stageOrder: string[] = [];
+    const stageMap = new Map<string, Array<GitLabJob & { log_tail?: string }>>();
+    for (const job of allJobs) {
+      if (!stageMap.has(job.stage)) {
+        stageOrder.push(job.stage);
+        stageMap.set(job.stage, []);
+      }
+      stageMap.get(job.stage)!.push(job);
+    }
+
+    // 4. Fetch log tails for failed jobs (with error tracking + cap signal)
+    const includeLogs = options.include_logs !== false;
+    const logLines = Math.min(options.log_tail_lines ?? 50, 200);
+    const maxLogsToFetch = Math.min(options.max_failed_jobs_with_logs ?? 5, 20);
+    const logFetchErrors: Array<{ job_id: number; error: string }> = [];
+    let logFetchCapped: { fetched: number; total_failed: number } | undefined;
+
+    if (includeLogs) {
+      const failedJobs = allJobs.filter(j => j.status === 'failed');
+      const jobsToFetchLogs = failedJobs.slice(0, maxLogsToFetch);
+      if (failedJobs.length > jobsToFetchLogs.length) {
+        // Surface the cap-skip so callers don't silently see only the first N
+        // log tails and assume that's the complete picture.
+        logFetchCapped = { fetched: jobsToFetchLogs.length, total_failed: failedJobs.length };
+      }
+
+      await Promise.all(
+        jobsToFetchLogs.map(async (job) => {
+          try {
+            const rawLog = await this.getJobLog(projectId, job.id);
+            const tail = this.logTail(this.cleanLog(rawLog), logLines);
+            const stageJobs = stageMap.get(job.stage);
+            const target = stageJobs?.find(j => j.id === job.id);
+            if (target) target.log_tail = tail;
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            logFetchErrors.push({ job_id: job.id, error: msg });
+            console.error(`[get_pipeline_summary] Failed to fetch log for job ${job.id}: ${msg}`);
+          }
+        })
+      );
+    }
+
+    // 5. Compute summary
+    const failed = allJobs.filter(j => j.status === 'failed');
+    const passed = allJobs.filter(j => j.status === 'success').length;
+    const skipped = allJobs.filter(j => j.status === 'skipped').length;
+    const manual = allJobs.filter(j => j.status === 'manual').length;
+    const canceled = allJobs.filter(j => j.status === 'canceled').length;
+
+    // 6. Build stage summaries
+    const stages = stageOrder.map(stageName => {
+      const jobs = stageMap.get(stageName)!;
+      return { name: stageName, status: this.deriveStageStatus(jobs), jobs };
+    });
+
+    return {
+      pipeline,
+      stages,
+      truncated,
+      summary: {
+        total_jobs: allJobs.length,
+        passed,
+        failed: failed.length,
+        skipped,
+        manual,
+        canceled,
+        failure_pattern: this.analyzeFailurePattern(failed),
+        log_fetch_errors: logFetchErrors.length > 0 ? logFetchErrors : undefined,
+        log_fetch_capped: logFetchCapped,
+      }
+    };
+  }
+
+  /**
+   * Get a job's log with intelligent filtering — strip ANSI codes,
+   * section markers, timestamps, and extract relevant portions.
+   */
+  async getJobLogSmart(
+    projectId: string,
+    jobId: number,
+    options: {
+      section?: string;
+      tail?: number;
+      head?: number;
+      strip_ansi?: boolean;
+      strip_timestamps?: boolean;
+      error_only?: boolean;
+    } = {}
+  ): Promise<JobLogSmartResponse> {
+    const rawLog = await this.getJobLog(projectId, jobId);
+
+    const stripAnsi = options.strip_ansi !== false;
+    const stripTimestamps = options.strip_timestamps !== false;
+
+    // Extract sections from the raw log for discoverability, before any stripping.
+    // The captured group contains the section name + any `[option=value]` collapsed
+    // marker; we strip ANSI then drop everything from the first `[` so the surfaced
+    // name matches the literal `section_end:NNN:NAME` token that callers can pass
+    // back as the `section` argument. (End markers never carry options.)
+    const sectionRegex = /section_start:\d+:([^\r\n]+)/g;
+    const sectionsFound: string[] = [];
+    let sectionMatch;
+    while ((sectionMatch = sectionRegex.exec(rawLog)) !== null) {
+      const sectionName = sectionMatch[1]
+        // eslint-disable-next-line no-control-regex
+        .replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '') // strip ANSI escapes
+        .replace(/\[.*$/, '')                  // strip collapsed/option suffix `[...]`
+        .trim();
+      if (sectionName && !sectionsFound.includes(sectionName)) {
+        sectionsFound.push(sectionName);
+      }
+    }
+
+    // Determine log content: extract specific section or use full log
+    let log = rawLog;
+    let sectionMatched: boolean | null = null;
+    if (options.section) {
+      sectionMatched = true;
+      const escapedSection = options.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // The `(?=[\\r\\n\\[]|$)` lookahead pins the section name to a delimiter
+      // (CR, LF, `[option=...]`, or end-of-string) so that a request for
+      // section `build` does NOT match an actual section named `build_extra`
+      // by prefix - per GitLab's section marker grammar. Matching is
+      // case-SENSITIVE: GitLab section names are identifiers and `Build` vs
+      // `build` are distinct sections - the `i` flag would create ambiguity.
+      const sectionStart = new RegExp(`section_start:\\d+:${escapedSection}(?=[\\r\\n\\[]|$)[^\\n]*\\n?`);
+      // `g` flag enables `lastIndex`-based seeking so we don't have to slice
+      // the (potentially multi-MB) rawLog before exec.
+      const sectionEnd = new RegExp(`section_end:\\d+:${escapedSection}(?=[\\r\\n\\[]|$)`, 'g');
+      const startMatch = sectionStart.exec(rawLog);
+      if (startMatch) {
+        const startIdx = startMatch.index + startMatch[0].length;
+        sectionEnd.lastIndex = startIdx;
+        const endMatch = sectionEnd.exec(rawLog);
+        const endIdx = endMatch ? endMatch.index : rawLog.length;
+        log = rawLog.slice(startIdx, endIdx);
+      } else {
+        sectionMatched = false;
+        log = ''; // don't let filters run on raw log when section was requested but not found
+      }
+    }
+
+    // Strip ANSI first if requested. Section markers are ALWAYS stripped:
+    // they're noise regardless of strip_ansi, and leaving them in would
+    // contaminate `tail`/`head` windows and inflate `line_count`. Section
+    // stripping must follow ANSI stripping because the section-marker regex
+    // expects the collapsed `\r\n` form (after the ANSI `\x1B[0K` is gone).
+    if (stripAnsi) {
+      log = this.stripAnsi(log);
+    }
+    log = this.stripSections(log);
+    if (stripTimestamps) {
+      log = this.stripTimestamps(log);
+    }
+
+    // Error-only extraction: regex-match whole lines containing any of the
+    // error keywords. Avoids splitting the log into an array of all lines
+    // when most are non-matching.
+    let errorLinesMatched: number | null = null;
+    if (options.error_only) {
+      const errorLineRegex = /^.*(?:error|fatal|failed|exception|traceback|panic).*$/gim;
+      const matches = log.match(errorLineRegex);
+      errorLinesMatched = matches?.length ?? 0;
+      log = matches?.join('\n') ?? '';
+    }
+
+    // Apply tail/head via index-based helpers - O(K) memory vs the O(N)
+    // array-of-all-lines pattern. Compare against line counts in advance so
+    // we only truncate when the limit actually shrinks the log.
+    let truncated = false;
+    if (options.tail !== undefined) {
+      const total = this.countLines(log);
+      if (options.tail < total) {
+        log = this.logTail(log, options.tail);
+        truncated = true;
+      }
+    } else if (options.head !== undefined) {
+      const total = this.countLines(log);
+      if (options.head < total) {
+        log = this.logHead(log, options.head);
+        truncated = true;
+      }
+    }
+
+    // Drop the single trailing '\n' (if present) so the returned `log` field
+    // has a stable shape regardless of which branches ran above. Without
+    // this, tail/head truncation strips the terminator (logTail/logHead use
+    // an `endIdx` bound) while the no-truncation passthrough preserves it -
+    // an asymmetric contract where the same tool sometimes returns `"L\n"`
+    // and sometimes `"L"` for what looks like the same content via line_count.
+    if (log.endsWith('\n')) log = log.slice(0, -1);
+
+    return {
+      job_id: jobId,
+      log,
+      line_count: this.countLines(log),
+      truncated,
+      sections_found: sectionsFound,
+      section_matched: sectionMatched,
+      error_lines_matched: errorLinesMatched,
+    };
+  }
+
+  /**
+   * Fetch log tails for jobs (used by list_pipeline_jobs extension).
+   * Returns results map and any errors encountered.
+   */
+  async getJobLogTails(
+    projectId: string,
+    jobIds: number[],
+    logLines: number = 30
+  ): Promise<{ tails: Map<number, string>; errors: Array<{ job_id: number; error: string }> }> {
+    const tails = new Map<number, string>();
+    const errors: Array<{ job_id: number; error: string }> = [];
+    const cappedLines = Math.min(logLines, 200);
+
+    await Promise.all(
+      jobIds.map(async (jobId) => {
+        try {
+          const rawLog = await this.getJobLog(projectId, jobId);
+          tails.set(jobId, this.logTail(this.cleanLog(rawLog), cappedLines));
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          errors.push({ job_id: jobId, error: msg });
+          console.error(`[getJobLogTails] Failed to fetch log for job ${jobId}: ${msg}`);
+        }
+      })
+    );
+
+    return { tails, errors };
   }
 
   // ===========================================================================

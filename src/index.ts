@@ -61,6 +61,8 @@ import {
   ListPipelineJobsSchema,
   GetJobSchema,
   GetJobLogSchema,
+  GetPipelineSummarySchema,
+  GetJobLogSmartSchema,
   RetryJobSchema,
   CancelJobSchema,
   ListEnvironmentsSchema,
@@ -465,7 +467,7 @@ const ALL_TOOLS = [
   // CI/CD: Jobs
   {
     name: "list_pipeline_jobs",
-    description: "List jobs for a specific pipeline",
+    description: "List jobs for a specific pipeline. Use scope=['failed'] and include_log_tail=true for quick failure investigation",
     inputSchema: createJsonSchema(ListPipelineJobsSchema),
     readOnly: true
   },
@@ -477,8 +479,20 @@ const ALL_TOOLS = [
   },
   {
     name: "get_job_log",
-    description: "Get the log/trace output of a job",
+    description: "Get the raw log/trace output of a job",
     inputSchema: createJsonSchema(GetJobLogSchema),
+    readOnly: true
+  },
+  {
+    name: "get_pipeline_summary",
+    description: "Get a complete pipeline investigation summary: pipeline details, jobs grouped by stage, and log tails for failed jobs — all in one call",
+    inputSchema: createJsonSchema(GetPipelineSummarySchema),
+    readOnly: true
+  },
+  {
+    name: "get_job_log_smart",
+    description: "Get a job's log with intelligent filtering: strip ANSI codes/timestamps, extract sections, tail/head, or error-only lines",
+    inputSchema: createJsonSchema(GetJobLogSmartSchema),
     readOnly: true
   },
   {
@@ -1390,6 +1404,52 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           page: args.page,
           per_page: args.per_page
         });
+
+        // Extension: include log tails for failed jobs if requested.
+        // When include_log_tail is true, response shape is ALWAYS the unified
+        // wrapper { jobs, log_fetch_errors?, log_fetch_capped? } so consumers
+        // can rely on a stable contract regardless of whether the pipeline
+        // had failed jobs or whether log fetches succeeded.
+        if (args.include_log_tail) {
+          const failedJobIds = jobs.items
+            .filter(j => j.status === 'failed')
+            .map(j => j.id);
+          const maxJobs = Math.min(args.max_log_tail_jobs ?? 10, 20);
+          const slicedIds = failedJobIds.slice(0, maxJobs);
+          let tails = new Map<number, string>();
+          let errors: Array<{ job_id: number; error: string }> = [];
+          if (slicedIds.length > 0) {
+            const result = await gitlabApi.getJobLogTails(
+              args.project_id,
+              slicedIds,
+              args.log_tail_lines ?? 30
+            );
+            tails = result.tails;
+            errors = result.errors;
+          }
+          const jobsWithLogs = jobs.items.map(j => ({
+            ...j,
+            ...(tails.has(j.id) ? { log_tail: tails.get(j.id) } : {})
+          }));
+          // Cap signal: when failed jobs exceed max_log_tail_jobs, surface it
+          // so the caller knows trailing failures are missing their log_tail.
+          const capped = failedJobIds.length > slicedIds.length
+            ? { fetched: slicedIds.length, total_failed: failedJobIds.length }
+            : undefined;
+          const errorSuffix = errors.length > 0 ? `, ${errors.length} failed` : '';
+          const cappedSuffix = capped ? `, capped at ${capped.fetched}/${capped.total_failed} failed` : '';
+          return {
+            content: [
+              { type: "text", text: `Found ${jobs.count} jobs (log tails: ${tails.size} success${errorSuffix}${cappedSuffix})` },
+              { type: "text", text: JSON.stringify({
+                jobs: jobsWithLogs,
+                ...(errors.length > 0 ? { log_fetch_errors: errors } : {}),
+                ...(capped ? { log_fetch_capped: capped } : {})
+              }, null, 2) }
+            ]
+          };
+        }
+
         return formatJobsResponse(jobs);
       }
 
@@ -1403,6 +1463,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const args = GetJobLogSchema.parse(request.params.arguments);
         const log = await gitlabApi.getJobLog(args.project_id, args.job_id);
         return { content: [{ type: "text", text: log }] };
+      }
+
+      case "get_pipeline_summary": {
+        const args = GetPipelineSummarySchema.parse(request.params.arguments);
+
+        const summary = await gitlabApi.getPipelineSummary(args.project_id, {
+          pipeline_id: args.pipeline_id,
+          ref: args.ref,
+          include_logs: args.include_logs,
+          log_tail_lines: args.log_tail_lines,
+          max_failed_jobs_with_logs: args.max_failed_jobs_with_logs,
+        });
+
+        return { content: [{ type: "text", text: JSON.stringify(summary, null, 2) }] };
+      }
+
+      case "get_job_log_smart": {
+        const args = GetJobLogSmartSchema.parse(request.params.arguments);
+
+        const result = await gitlabApi.getJobLogSmart(args.project_id, args.job_id, {
+          section: args.section,
+          tail: args.tail,
+          head: args.head,
+          strip_ansi: args.strip_ansi,
+          strip_timestamps: args.strip_timestamps,
+          error_only: args.error_only,
+        });
+
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       case "retry_job": {
