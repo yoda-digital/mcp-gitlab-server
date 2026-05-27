@@ -304,3 +304,75 @@ describe('GitLabApi.getJobLogSmart - section extraction', () => {
     expect(result.log).not.toContain('build_extra payload');
   });
 });
+
+describe('GitLabApi.getJobLogSmart - section marker stripping (CRLF)', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+  });
+
+  it('strips both CR and LF after the section marker - no orphan blank lines mid-log', async () => {
+    // Real GitLab: section_*:NNN:name\r\x1B[0K\n
+    // After stripAnsi → section_*:NNN:name\r\n
+    // The OLD regex `[\r\n]?` consumed only one of the two, leaving an orphan
+    // blank line where each marker used to be. The fixed `\r?\n?` regex
+    // consumes both, so the cleaned log has no spurious gaps.
+    const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
+    const log =
+      'section_start:1:build\r\x1B[0K\n' +
+      'building...\n' +
+      'last real output line\n' +
+      'section_end:1:build\r\x1B[0K\n';
+    mockJobLogResponse(log);
+
+    const result = await api.getJobLogSmart('proj', 42, {});
+
+    // Cleaned log must contain only the two real payload lines, separated by
+    // exactly one newline. With the bug, the result would include orphan
+    // blank lines where the section markers used to be (manifesting as
+    // sequences of `\n\n` in the output).
+    expect(result.log).not.toMatch(/\n\n/);
+    expect(result.log).toContain('building...');
+    expect(result.log).toContain('last real output line');
+  });
+
+  it('tail: 2 must return the last TWO real lines, not orphan section blanks', async () => {
+    // The orphan-`\n` bug caused tail: 2 to return a fragment like "\n" or
+    // ""/"last_line" depending on log shape. With the marker fully stripped
+    // the last 2 real lines are returned intact.
+    const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
+    const log =
+      'section_start:1:build\r\x1B[0K\n' +
+      'building...\n' +
+      'last real output line\n' +
+      'section_end:1:build\r\x1B[0K\n';
+    mockJobLogResponse(log);
+
+    const result = await api.getJobLogSmart('proj', 42, { tail: 2 });
+
+    // Without the fix, tail: 2 would return "\n" (two orphan newlines).
+    // With the fix, the cleaned log has structure
+    //   "building...\nlast real output line\n"
+    // so tail: 2 returns the slice after the second-to-last newline.
+    expect(result.log).toContain('last real output line');
+    expect(result.log).not.toBe('\n');
+  });
+
+  it('strips the entire section line even when no payload precedes section_end', async () => {
+    const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
+    const log =
+      'first real line\n' +
+      'section_start:1:s\r\x1B[0K\n' +
+      'section_end:1:s\r\x1B[0K\n' +
+      'second real line\n';
+    mockJobLogResponse(log);
+
+    // strip_ansi defaults to true. After cleaning we should see two real
+    // lines with no orphan blanks where the markers used to be.
+    const result = await api.getJobLogSmart('proj', 42, {});
+
+    expect(result.log).toContain('first real line');
+    expect(result.log).toContain('second real line');
+    // No double newlines from orphan \n bytes
+    expect(result.log).not.toMatch(/\n\n/);
+  });
+});

@@ -2367,10 +2367,20 @@ export class GitLabApi {
     return log.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
   }
 
-  /** Strip GitLab CI section markers from a log string. */
+  /**
+   * Strip GitLab CI section markers from a log string.
+   *
+   * GitLab markers occupy their own line in the format
+   *   `section_*:NNN:name\r\x1B[0K\n`
+   * When ANSI is stripped first (the normal `cleanLog` order), the marker
+   * collapses to `section_*:NNN:name\r\n` and we need to consume BOTH CR and
+   * LF. `\r?\n?` greedily eats whichever combination is present (`\r\n`,
+   * `\r`, `\n`, or none) so no orphan blank line is left behind - which
+   * would otherwise shift `tail: N` extraction by one empty line.
+   */
   private stripSections(log: string): string {
     // eslint-disable-next-line no-control-regex
-    return log.replace(/section_(start|end):\d+:[^\r\n]*[\r\n]?/g, '');
+    return log.replace(/section_(start|end):\d+:[^\r\n]*\r?\n?/g, '');
   }
 
   /** Strip ISO timestamp prefixes from log lines. */
