@@ -217,3 +217,90 @@ describe('GitLabApi.uploadProjectWikiAttachment (#62)', () => {
     expect(result.commit_id).toBe('abc123');
   });
 });
+
+// =============================================================================
+// getJobLogSmart - section extraction
+// =============================================================================
+
+function mockJobLogResponse(rawLog: string) {
+  fetchMock.mockResolvedValueOnce({
+    ok: true,
+    statusText: 'OK',
+    headers: { get: () => null },
+    text: async () => rawLog,
+  } as unknown as Awaited<ReturnType<typeof fetch>>);
+}
+
+describe('GitLabApi.getJobLogSmart - section extraction', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+  });
+
+  // GitLab CI section markers occupy their own line - format is:
+  //   section_start:TIMESTAMP:NAME\r\x1B[0K\n
+  //   ...payload lines...\n
+  //   section_end:TIMESTAMP:NAME\r\x1B[0K\n
+  // The lookahead pin (?=[\r\n\[]|$) blocks prefix matches like requesting
+  // 'build' and silently extracting 'build_extra'.
+
+  it('does NOT match a prefix - requesting "build" must skip "build_extra"', async () => {
+    const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
+    const log =
+      'section_start:1700000000:build_extra\r\x1B[0K\n' +
+      'build_extra payload\n' +
+      'section_end:1700000001:build_extra\r\x1B[0K\n' +
+      'unrelated trailing line\n';
+    mockJobLogResponse(log);
+
+    const result = await api.getJobLogSmart('proj', 42, { section: 'build' });
+
+    expect(result.section_matched).toBe(false);
+    expect(result.log).toBe('');
+  });
+
+  it('matches an exact section followed by CR', async () => {
+    const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
+    const log =
+      'section_start:1700000000:build\r\x1B[0K\n' +
+      'build step output\n' +
+      'section_end:1700000010:build\r\x1B[0K\n';
+    mockJobLogResponse(log);
+
+    const result = await api.getJobLogSmart('proj', 42, { section: 'build' });
+
+    expect(result.section_matched).toBe(true);
+    expect(result.log).toContain('build step output');
+  });
+
+  it('matches an exact section whose marker carries a `[option]` collapsed marker', async () => {
+    const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
+    const log =
+      'section_start:1700000000:script[collapsed=true]\r\x1B[0K\n' +
+      'run the tests\n' +
+      'section_end:1700000010:script\r\x1B[0K\n';
+    mockJobLogResponse(log);
+
+    const result = await api.getJobLogSmart('proj', 42, { section: 'script' });
+
+    expect(result.section_matched).toBe(true);
+    expect(result.log).toContain('run the tests');
+  });
+
+  it('picks the exact section when a prefix-shared section appears alongside it', async () => {
+    const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
+    const log =
+      'section_start:1700000000:build_extra\r\x1B[0K\n' +
+      'build_extra payload\n' +
+      'section_end:1700000001:build_extra\r\x1B[0K\n' +
+      'section_start:1700000002:build\r\x1B[0K\n' +
+      'the real build payload\n' +
+      'section_end:1700000003:build\r\x1B[0K\n';
+    mockJobLogResponse(log);
+
+    const result = await api.getJobLogSmart('proj', 42, { section: 'build' });
+
+    expect(result.section_matched).toBe(true);
+    expect(result.log).toContain('the real build payload');
+    expect(result.log).not.toContain('build_extra payload');
+  });
+});

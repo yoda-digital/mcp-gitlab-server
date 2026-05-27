@@ -2653,10 +2653,14 @@ export class GitLabApi {
     if (options.section) {
       sectionMatched = true;
       const escapedSection = options.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const sectionStart = new RegExp(`section_start:\\d+:${escapedSection}[^\\n]*\\n?`, 'i');
+      // The `(?=[\\r\\n\\[]|$)` lookahead pins the section name to a delimiter
+      // (CR, LF, `[option=...]`, or end-of-string) so that a request for
+      // section `build` does NOT match an actual section named `build_extra`
+      // by prefix - per GitLab's section marker grammar.
+      const sectionStart = new RegExp(`section_start:\\d+:${escapedSection}(?=[\\r\\n\\[]|$)[^\\n]*\\n?`, 'i');
       // `g` flag enables `lastIndex`-based seeking so we don't have to slice
       // the (potentially multi-MB) rawLog before exec.
-      const sectionEnd = new RegExp(`section_end:\\d+:${escapedSection}`, 'gi');
+      const sectionEnd = new RegExp(`section_end:\\d+:${escapedSection}(?=[\\r\\n\\[]|$)`, 'gi');
       const startMatch = sectionStart.exec(rawLog);
       if (startMatch) {
         const startIdx = startMatch.index + startMatch[0].length;
