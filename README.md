@@ -120,7 +120,7 @@ Read-only mode (`GITLAB_READ_ONLY_MODE=true`) filters every mutating tool out at
 
 ### Response shape contract (since 0.10.0)
 
-Every tool response populates BOTH `content[]` (the spec's presentational channel) AND `structuredContent` (the spec's typed-data channel) per the MCP `CallToolResult` schema. The two carry identical payloads, so clients consuming either surface get the full data.
+Every tool response populates BOTH `content[]` (the spec's presentational channel) AND `structuredContent` (the spec's typed-data channel) per the MCP `CallToolResult` schema. `structuredContent` is always a strict superset of `content[]` informationally: a client reading only `structuredContent` always receives the complete payload, while a client reading only `content[]` receives just the display surface. The two surfaces differ only in framing - `content[]` is the presentational projection (JSON-stringified, human-readable status line, or raw log blob), while `structuredContent` is the canonical typed source. For status tools and raw-blob tools (sections below), typed metadata like `status`, `resource`, `job_id`, `byte_count`, `line_count` lives exclusively in `structuredContent`; consume that channel for programmatic use.
 
 **List tools** (`list_issues`, `list_merge_requests`, `list_pipelines`, etc.) return:
 ```json
@@ -151,6 +151,22 @@ Every tool response populates BOTH `content[]` (the spec's presentational channe
 {
   "content": [{ "type": "text", "text": "{ \"pipeline\": {...}, \"stages\": [...], \"truncated\": false, \"summary\": { \"total_jobs\": N, \"passed\": N, \"failed\": N, \"skipped\": N, \"manual\": N, \"canceled\": N, \"failure_pattern\": {...} } }" }],
   "structuredContent": { "pipeline": {...}, "stages": [...], "truncated": false, "summary": { "total_jobs": N, "passed": N, "failed": N, "skipped": N, "manual": N, "canceled": N, "failure_pattern": {...} } }
+}
+```
+
+**Status tools** (`delete_branch`, `delete_project_wiki_page`, `delete_group_wiki_page`, `delete_group`, `unprotect_branch`) keep a human-readable sentence in `content[0].text` for display, and mirror the same sentence in `structuredContent.message` alongside typed state fields:
+```json
+{
+  "content": [{ "type": "text", "text": "Branch 'foo' has been deleted." }],
+  "structuredContent": { "status": "deleted", "resource": "branch", "project_id": "namespace/repo", "branch": "foo", "message": "Branch 'foo' has been deleted." }
+}
+```
+
+**Raw-blob tools** (`get_job_log`) treat the blob itself as the natural display surface - `content[0].text` is the raw log, and `structuredContent.log` mirrors it byte-for-byte alongside metadata (`byte_count`, `line_count`) that programmatic clients would otherwise re-derive from the blob:
+```json
+{
+  "content": [{ "type": "text", "text": "Running job...\n..." }],
+  "structuredContent": { "job_id": 42, "log": "Running job...\n...", "byte_count": 17, "line_count": 2 }
 }
 ```
 

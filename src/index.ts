@@ -1487,10 +1487,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           if (log.charCodeAt(i) === 10) line_count++;
         }
         if (log.length > 0 && log.charCodeAt(log.length - 1) !== 10) line_count++;
-        return statusResponse(
-          log,
-          { job_id: args.job_id, log, byte_count, line_count }
-        );
+        // structuredContent.log mirrors content[0].text - it IS the message,
+        // so we don't go through statusResponse (which would duplicate the
+        // blob into a `message` field). Parity via superset is preserved.
+        return {
+          content: [{ type: "text" as const, text: log }],
+          structuredContent: { job_id: args.job_id, log, byte_count, line_count },
+        };
       }
 
       case "get_pipeline_summary": {

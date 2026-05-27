@@ -51,13 +51,20 @@ export function jsonResponse<T extends Record<string, unknown>>(data: T) {
 /**
  * Status/text response with structured payload. Use for tools whose primary
  * surface is a human-readable status line (delete/unprotect handlers) or a
- * raw blob (job logs) where content[0].text is the natural display, but
- * structuredContent still carries the typed fields for programmatic clients.
+ * raw blob (job logs) where content[0].text is the natural display.
+ *
+ * `structuredContent` is always a strict superset of `content[0].text`: it
+ * carries the typed fields PLUS a `message` field mirroring the display
+ * text. So a client reading only `structuredContent` receives the complete
+ * payload (typed fields + the human-readable message), while a client
+ * reading only `content[]` gets the natural display rendering. content[]
+ * is the presentational projection; structuredContent is the canonical
+ * source.
  */
 export function statusResponse<T extends Record<string, unknown>>(message: string, data: T) {
   return {
     content: [{ type: "text" as const, text: message }],
-    structuredContent: data,
+    structuredContent: { ...data, message },
   };
 }
 
