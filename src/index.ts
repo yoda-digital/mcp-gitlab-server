@@ -1407,9 +1407,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
 
         // Extension: include log tails for failed jobs if requested.
         // When include_log_tail is true, response shape is ALWAYS the unified
-        // wrapper { jobs, log_fetch_errors? } so consumers can rely on a stable
-        // contract regardless of whether the pipeline had failed jobs or whether
-        // log fetches succeeded.
+        // wrapper { jobs, log_fetch_errors?, log_fetch_capped? } so consumers
+        // can rely on a stable contract regardless of whether the pipeline
+        // had failed jobs or whether log fetches succeeded.
         if (args.include_log_tail) {
           const failedJobIds = jobs.items
             .filter(j => j.status === 'failed')
@@ -1431,13 +1431,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
             ...j,
             ...(tails.has(j.id) ? { log_tail: tails.get(j.id) } : {})
           }));
+          // Cap signal: when failed jobs exceed max_log_tail_jobs, surface it
+          // so the caller knows trailing failures are missing their log_tail.
+          const capped = failedJobIds.length > slicedIds.length
+            ? { fetched: slicedIds.length, total_failed: failedJobIds.length }
+            : undefined;
           const errorSuffix = errors.length > 0 ? `, ${errors.length} failed` : '';
+          const cappedSuffix = capped ? `, capped at ${capped.fetched}/${capped.total_failed} failed` : '';
           return {
             content: [
-              { type: "text", text: `Found ${jobs.count} jobs (log tails: ${tails.size} success${errorSuffix})` },
+              { type: "text", text: `Found ${jobs.count} jobs (log tails: ${tails.size} success${errorSuffix}${cappedSuffix})` },
               { type: "text", text: JSON.stringify({
                 jobs: jobsWithLogs,
-                ...(errors.length > 0 ? { log_fetch_errors: errors } : {})
+                ...(errors.length > 0 ? { log_fetch_errors: errors } : {}),
+                ...(capped ? { log_fetch_capped: capped } : {})
               }, null, 2) }
             ]
           };

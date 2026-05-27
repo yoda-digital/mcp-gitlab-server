@@ -980,7 +980,7 @@ export const CancelJobSchema = z.object({
 // Pipeline Investigation Tool Schemas
 export const GetPipelineSummarySchema = z.object({
   project_id: z.string().describe("Project ID or URL-encoded path"),
-  pipeline_id: z.number().optional().describe("Specific pipeline ID. If omitted, uses latest pipeline"),
+  pipeline_id: z.number().int().positive().optional().describe("Specific pipeline ID. If omitted, uses latest pipeline"),
   ref: z.string().optional().describe("Branch or tag to find pipeline (alternative to pipeline_id)"),
   include_logs: z.boolean().optional().describe("Include tail of failed job logs (default: true)"),
   log_tail_lines: z.number().int().min(1).max(200).optional().describe("Number of log tail lines per failed job (default: 50, max: 200)"),
@@ -991,13 +991,13 @@ export const GetPipelineSummarySchema = z.object({
 
 export const GetJobLogSmartSchema = z.object({
   project_id: z.string().describe("Project ID or URL-encoded path"),
-  job_id: z.number().describe("Job ID"),
-  section: z.string().optional().describe("Extract specific log section (e.g. 'script', 'after_script')"),
+  job_id: z.number().int().positive().describe("Job ID"),
+  section: z.string().min(1).optional().describe("Extract specific log section (e.g. 'script', 'after_script'). Case-sensitive exact match against GitLab section names."),
   tail: z.number().int().min(1).optional().describe("Return only last N lines"),
   head: z.number().int().min(1).optional().describe("Return only first N lines"),
-  strip_ansi: z.boolean().optional().describe("Remove ANSI escape codes (default: true)"),
+  strip_ansi: z.boolean().optional().describe("Remove ANSI escape codes (default: true). Section markers are always stripped regardless of this flag - they would otherwise pollute tail/head windows."),
   strip_timestamps: z.boolean().optional().describe("Remove GitLab timestamp prefixes (default: true)"),
-  error_only: z.boolean().optional().describe("Extract only error-related lines; returns empty log with error_lines_matched=0 if none found (default: false)"),
+  error_only: z.boolean().optional().describe("Extract only error-related lines (English keywords: error/fatal/failed/exception/traceback/panic). Returns empty log with error_lines_matched=0 if none found (default: false)."),
 }).refine(v => !(v.tail !== undefined && v.head !== undefined), {
   message: "Pass either tail or head, not both",
 });

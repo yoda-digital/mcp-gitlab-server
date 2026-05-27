@@ -357,6 +357,52 @@ describe('GitLabApi.getJobLogSmart - section marker stripping (CRLF)', () => {
     expect(result.log).not.toBe('\n');
   });
 
+  it('sections_found surfaces the bare section name, not the `[collapsed=true]` suffix', async () => {
+    // GitLab `section_start:N:script[collapsed=true]\r\x1B[0K\n` discovery used
+    // to surface `script[collapsed=true]` verbatim. A caller passing that string
+    // back as the `section` arg would match the start marker (lookahead allows
+    // `[` after the name) but `section_end:N:script` would not match the
+    // start string with the brackets - the function would then read to EOF.
+    // sections_found must therefore normalize to the bare canonical name.
+    const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
+    const log =
+      'section_start:1:script[collapsed=true]\r\x1B[0K\n' +
+      'running tests\n' +
+      'section_end:1:script\r\x1B[0K\n' +
+      'section_start:2:build\r\x1B[0K\n' +
+      'compiling\n' +
+      'section_end:2:build\r\x1B[0K\n';
+    mockJobLogResponse(log);
+
+    const result = await api.getJobLogSmart('proj', 42, {});
+
+    expect(result.sections_found).toEqual(['script', 'build']);
+    expect(result.sections_found).not.toContain('script[collapsed=true]');
+  });
+
+  it('strips section markers even when strip_ansi: false (markers are noise regardless of ANSI flag)', async () => {
+    // Section stripping is decoupled from the strip_ansi flag - they're
+    // independent concerns. A caller debugging raw ANSI output should still
+    // get a clean tail/head window without `section_start:NNN:name\r\x1B[0K`
+    // pollution.
+    const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
+    const log =
+      'section_start:1:script\r\x1B[0K\n' +
+      '\x1B[31mERROR\x1B[0m: something broke\n' +
+      'section_end:1:script\r\x1B[0K\n';
+    mockJobLogResponse(log);
+
+    const result = await api.getJobLogSmart('proj', 42, { strip_ansi: false });
+
+    // Section markers are gone
+    expect(result.log).not.toContain('section_start');
+    expect(result.log).not.toContain('section_end');
+    // ANSI escapes are preserved (strip_ansi: false)
+    expect(result.log).toContain('\x1B[31m');
+    // The real payload survives
+    expect(result.log).toContain('ERROR');
+  });
+
   it('strips the entire section line even when no payload precedes section_end', async () => {
     const api = new GitLabApi({ apiUrl: 'https://gitlab.example/api/v4', token: 't' });
     const log =

@@ -182,6 +182,13 @@ export interface PipelineSummaryResponse {
     canceled: number;
     failure_pattern: FailurePattern;
     log_fetch_errors?: Array<{ job_id: number; error: string }>;
+    /**
+     * Present when `failed > max_failed_jobs_with_logs` and the helper
+     * intentionally skipped fetching logs for the trailing failures (cap
+     * default 5). `fetched` is how many had logs attached; `total_failed`
+     * is the full failure count. Absence means no cap-skipping happened.
+     */
+    log_fetch_capped?: { fetched: number; total_failed: number };
   };
 }
 
@@ -2372,11 +2379,14 @@ export class GitLabApi {
    *
    * GitLab markers occupy their own line in the format
    *   `section_*:NNN:name\r\x1B[0K\n`
-   * When ANSI is stripped first (the normal `cleanLog` order), the marker
-   * collapses to `section_*:NNN:name\r\n` and we need to consume BOTH CR and
-   * LF. `\r?\n?` greedily eats whichever combination is present (`\r\n`,
-   * `\r`, `\n`, or none) so no orphan blank line is left behind - which
-   * would otherwise shift `tail: N` extraction by one empty line.
+   * Always pair this with `stripAnsi` first (e.g. via `cleanLog`). After
+   * ANSI removal the marker collapses to `section_*:NNN:name\r\n` and the
+   * `\r?\n?` tail consumes whichever CRLF combination is present (`\r\n`,
+   * `\r`, `\n`, or none), so no orphan blank line is left behind - which
+   * would otherwise shift `tail: N` extraction by one empty line per marker.
+   * If called BEFORE `stripAnsi`, the `\x1B[0K` bytes after the section
+   * name remain unconsumed; that is not a correctness problem for the
+   * current callers but is a footgun for any future direct caller.
    */
   private stripSections(log: string): string {
     // eslint-disable-next-line no-control-regex
@@ -2462,27 +2472,24 @@ export class GitLabApi {
     }
 
     const reasons = failedJobs.map(j => j.failure_reason).filter(Boolean) as string[];
-    const uniqueReasons = [...new Set(reasons)];
+    const unreasonedCount = failedJobs.length - reasons.length;
 
     if (reasons.length === 0) {
       // N≥2 failed jobs where every failure_reason is missing/empty
       return { kind: 'unknown', count: failedJobs.length };
     }
+    const uniqueReasons = [...new Set(reasons)];
     if (uniqueReasons.length === 1) {
       return {
         kind: 'shared_reason',
         reason: uniqueReasons[0],
         count: reasons.length,
-        unreasoned_count: failedJobs.length - reasons.length,
+        unreasoned_count: unreasonedCount,
       };
     }
     const counts: Record<string, number> = {};
     for (const r of reasons) counts[r] = (counts[r] || 0) + 1;
-    return {
-      kind: 'mixed',
-      reasons: counts,
-      unreasoned_count: failedJobs.length - reasons.length,
-    };
+    return { kind: 'mixed', reasons: counts, unreasoned_count: unreasonedCount };
   }
 
   /**
@@ -2526,9 +2533,11 @@ export class GitLabApi {
       max_failed_jobs_with_logs?: number;
     } = {}
   ): Promise<PipelineSummaryResponse> {
-    // 1. Resolve pipeline
+    // 1. Resolve pipeline. Use `!== undefined` so `pipeline_id: 0` is treated
+    // as a real value (and rejected by schema's .int().positive() guard) rather
+    // than silently falling through to "find latest pipeline".
     let pipeline: GitLabPipeline;
-    if (options.pipeline_id) {
+    if (options.pipeline_id !== undefined) {
       pipeline = await this.getPipeline(projectId, options.pipeline_id);
     } else {
       const listOpts: { ref?: string; per_page?: number } = { per_page: 1 };
@@ -2567,15 +2576,21 @@ export class GitLabApi {
       stageMap.get(job.stage)!.push(job);
     }
 
-    // 4. Fetch log tails for failed jobs (with error tracking)
+    // 4. Fetch log tails for failed jobs (with error tracking + cap signal)
     const includeLogs = options.include_logs !== false;
     const logLines = Math.min(options.log_tail_lines ?? 50, 200);
     const maxLogsToFetch = Math.min(options.max_failed_jobs_with_logs ?? 5, 20);
     const logFetchErrors: Array<{ job_id: number; error: string }> = [];
+    let logFetchCapped: { fetched: number; total_failed: number } | undefined;
 
     if (includeLogs) {
       const failedJobs = allJobs.filter(j => j.status === 'failed');
       const jobsToFetchLogs = failedJobs.slice(0, maxLogsToFetch);
+      if (failedJobs.length > jobsToFetchLogs.length) {
+        // Surface the cap-skip so callers don't silently see only the first N
+        // log tails and assume that's the complete picture.
+        logFetchCapped = { fetched: jobsToFetchLogs.length, total_failed: failedJobs.length };
+      }
 
       await Promise.all(
         jobsToFetchLogs.map(async (job) => {
@@ -2620,6 +2635,7 @@ export class GitLabApi {
         canceled,
         failure_pattern: this.analyzeFailurePattern(failed),
         log_fetch_errors: logFetchErrors.length > 0 ? logFetchErrors : undefined,
+        log_fetch_capped: logFetchCapped,
       }
     };
   }
@@ -2645,13 +2661,20 @@ export class GitLabApi {
     const stripAnsi = options.strip_ansi !== false;
     const stripTimestamps = options.strip_timestamps !== false;
 
-    // Extract sections from the raw log for discoverability, before any stripping
+    // Extract sections from the raw log for discoverability, before any stripping.
+    // The captured group contains the section name + any `[option=value]` collapsed
+    // marker; we strip ANSI then drop everything from the first `[` so the surfaced
+    // name matches the literal `section_end:NNN:NAME` token that callers can pass
+    // back as the `section` argument. (End markers never carry options.)
     const sectionRegex = /section_start:\d+:([^\r\n]+)/g;
     const sectionsFound: string[] = [];
     let sectionMatch;
     while ((sectionMatch = sectionRegex.exec(rawLog)) !== null) {
-      // eslint-disable-next-line no-control-regex
-      const sectionName = sectionMatch[1].replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
+      const sectionName = sectionMatch[1]
+        // eslint-disable-next-line no-control-regex
+        .replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '') // strip ANSI escapes
+        .replace(/\[.*$/, '')                  // strip collapsed/option suffix `[...]`
+        .trim();
       if (sectionName && !sectionsFound.includes(sectionName)) {
         sectionsFound.push(sectionName);
       }
@@ -2666,11 +2689,13 @@ export class GitLabApi {
       // The `(?=[\\r\\n\\[]|$)` lookahead pins the section name to a delimiter
       // (CR, LF, `[option=...]`, or end-of-string) so that a request for
       // section `build` does NOT match an actual section named `build_extra`
-      // by prefix - per GitLab's section marker grammar.
-      const sectionStart = new RegExp(`section_start:\\d+:${escapedSection}(?=[\\r\\n\\[]|$)[^\\n]*\\n?`, 'i');
+      // by prefix - per GitLab's section marker grammar. Matching is
+      // case-SENSITIVE: GitLab section names are identifiers and `Build` vs
+      // `build` are distinct sections - the `i` flag would create ambiguity.
+      const sectionStart = new RegExp(`section_start:\\d+:${escapedSection}(?=[\\r\\n\\[]|$)[^\\n]*\\n?`);
       // `g` flag enables `lastIndex`-based seeking so we don't have to slice
       // the (potentially multi-MB) rawLog before exec.
-      const sectionEnd = new RegExp(`section_end:\\d+:${escapedSection}(?=[\\r\\n\\[]|$)`, 'gi');
+      const sectionEnd = new RegExp(`section_end:\\d+:${escapedSection}(?=[\\r\\n\\[]|$)`, 'g');
       const startMatch = sectionStart.exec(rawLog);
       if (startMatch) {
         const startIdx = startMatch.index + startMatch[0].length;
@@ -2684,10 +2709,15 @@ export class GitLabApi {
       }
     }
 
-    // Apply stripping using component helpers for consistency
+    // Strip ANSI first if requested. Section markers are ALWAYS stripped:
+    // they're noise regardless of strip_ansi, and leaving them in would
+    // contaminate `tail`/`head` windows and inflate `line_count`. Section
+    // stripping must follow ANSI stripping because the section-marker regex
+    // expects the collapsed `\r\n` form (after the ANSI `\x1B[0K` is gone).
     if (stripAnsi) {
-      log = this.stripSections(this.stripAnsi(log));
+      log = this.stripAnsi(log);
     }
+    log = this.stripSections(log);
     if (stripTimestamps) {
       log = this.stripTimestamps(log);
     }

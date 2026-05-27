@@ -403,4 +403,55 @@ describe('Response schemas — GitLab EE nullability', () => {
       expect(parsed.avatar_url).toBeNull();
     });
   });
+
+  describe('Pipeline investigation schemas - input hardening', () => {
+    it('GetPipelineSummarySchema rejects pipeline_id: 0 (silent-failure guard)', async () => {
+      const { GetPipelineSummarySchema } = await import('./schemas.js');
+      const result = GetPipelineSummarySchema.safeParse({ project_id: 'p', pipeline_id: 0 });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        // Must mention positive constraint (zod's default error includes "Number must be greater than 0")
+        const msg = result.error.issues.map(i => i.message).join(' ');
+        expect(msg.toLowerCase()).toMatch(/positive|greater than 0/);
+      }
+    });
+
+    it('GetPipelineSummarySchema rejects negative pipeline_id', async () => {
+      const { GetPipelineSummarySchema } = await import('./schemas.js');
+      const result = GetPipelineSummarySchema.safeParse({ project_id: 'p', pipeline_id: -1 });
+      expect(result.success).toBe(false);
+    });
+
+    it('GetPipelineSummarySchema accepts a positive pipeline_id', async () => {
+      const { GetPipelineSummarySchema } = await import('./schemas.js');
+      const result = GetPipelineSummarySchema.safeParse({ project_id: 'p', pipeline_id: 42 });
+      expect(result.success).toBe(true);
+    });
+
+    it('GetJobLogSmartSchema rejects empty section string (silent-skip guard)', async () => {
+      const { GetJobLogSmartSchema } = await import('./schemas.js');
+      const result = GetJobLogSmartSchema.safeParse({ project_id: 'p', job_id: 1, section: '' });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const paths = result.error.issues.flatMap(i => i.path);
+        expect(paths).toContain('section');
+      }
+    });
+
+    it('GetJobLogSmartSchema rejects job_id: 0', async () => {
+      const { GetJobLogSmartSchema } = await import('./schemas.js');
+      const result = GetJobLogSmartSchema.safeParse({ project_id: 'p', job_id: 0 });
+      expect(result.success).toBe(false);
+    });
+
+    it('GetJobLogSmartSchema accepts a positive job_id and non-empty section', async () => {
+      const { GetJobLogSmartSchema } = await import('./schemas.js');
+      const result = GetJobLogSmartSchema.safeParse({
+        project_id: 'p',
+        job_id: 42,
+        section: 'build',
+      });
+      expect(result.success).toBe(true);
+    });
+  });
 });
