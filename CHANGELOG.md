@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet. New entries land here between releases._
+### Changed (BREAKING)
+
+- **All `list_*` tool responses now use the unified `{count, items}` envelope** in a single MCP content item. Pre-0.10.0 these tools returned a two-content-item shape: `[{type: "text", text: "Found N items"}, {type: "text", text: "[ ...JSON array... ]"}]`. From 0.10.0 they return `[{type: "text", text: "{ \"count\": N, \"items\": [ ... ] }"}]`. The same `{count, items}` payload is also populated on the spec-blessed `structuredContent` field. Affects 20 list-* formatters in `src/formatters.ts` and the `list_pipeline_jobs + include_log_tail` extension in `src/index.ts` (whose data field was renamed from `jobs` to `items` for cross-tool consistency). Fixes #95; closes the gateway-compatibility class of issues for clients like ContextForge that read only `content[0]`. (#96 + maintainer reincarnation)
+- **Single-entity formatters (`formatWikiPageResponse`, `formatWikiAttachmentResponse`)** drop their human-readable prefix (`"Wiki Page: <title>"` / `"Wiki Attachment: <name>"`). Their single content item is now the bare JSON entity object. Equivalent information is carried inside the JSON's `title` / `file_name` fields. (#96)
+
+### Added
+
+- **`structuredContent` field** populated alongside `content[]` on every formatter response. MCP `CallToolResult` schema defines both: `content` for presentational chunks (rendered in transcripts) and `structuredContent` for typed machine-data (consumed by gateways and programmatic integrations). The two surfaces carry identical payloads; spec-conformant clients can consume either. This is the protocol-correct slot for structured tool output, eliminating the prior need for clients to `JSON.parse(content[0].text)` to obtain typed data.
+- **`extractListItems<T>` E2E helper** in `e2e/src/helpers/types.ts`. Shape-aware reader for `{count, items: T[]}` responses with runtime assertion + clearer error messages than the type-erased `extractJson<Array<T>>` pattern it replaces. Used at 37 E2E test sites.
+- **README "Response shape contract" section** documenting the `{count, items}` list envelope, the bare-object single-entity shape, and the `structuredContent` field for future contributors and consumers.
+
+### Migration
+
+For external consumers of any `list_*` tool:
+- Read `response.structuredContent` directly (recommended, single source of truth) OR
+- Replace `JSON.parse(response.content[1].text)` with `JSON.parse(response.content[0].text).items`.
+
+For consumers of `list_pipeline_jobs + include_log_tail`:
+- Replace `data.jobs` with `data.items` (field rename for cross-tool consistency).
 
 ## [0.9.1] - 2026-05-27
 

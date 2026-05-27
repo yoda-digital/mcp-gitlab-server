@@ -118,6 +118,38 @@ Full tool list in [`CLAUDE.md`](./CLAUDE.md). Per-tool docs for selected tools i
 
 Read-only mode (`GITLAB_READ_ONLY_MODE=true`) filters every mutating tool out at registration time. A misbehaving agent cannot see them, let alone call them.
 
+### Response shape contract (since 0.10.0)
+
+Every tool response populates BOTH `content[]` (the spec's presentational channel) AND `structuredContent` (the spec's typed-data channel) per the MCP `CallToolResult` schema. The two carry identical payloads, so clients consuming either surface get the full data.
+
+**List tools** (`list_issues`, `list_merge_requests`, `list_pipelines`, etc.) return:
+```json
+{
+  "content": [{ "type": "text", "text": "{ \"count\": N, \"items\": [ ... ] }" }],
+  "structuredContent": { "count": N, "items": [ ... ] }
+}
+```
+
+**Single-entity tools** (`get_issue`, `get_pipeline`, `get_wiki_page`, etc.) return the entity directly:
+```json
+{
+  "content": [{ "type": "text", "text": "{ \"id\": 42, ... }" }],
+  "structuredContent": { "id": 42, ... }
+}
+```
+
+**Composite tools** with side-band metadata (`list_pipeline_jobs + include_log_tail=true`, `get_pipeline_summary`) follow the list envelope and surface optional fields alongside `items`:
+```json
+{
+  "content": [{ "type": "text", "text": "{ \"count\": N, \"items\": [...], \"log_fetch_errors\": [...], \"log_fetch_capped\": {...} }" }],
+  "structuredContent": { "count": N, "items": [...], "log_fetch_errors": [...], "log_fetch_capped": {...} }
+}
+```
+
+**Why both fields**: clients that iterate `content[]` and `JSON.parse(content[i].text)` (Claude Desktop, Continue, Cursor, Cline) work unchanged. Clients that consume tool output programmatically without parsing free-form text - MCP gateways like ContextForge, custom integrations - read `structuredContent` directly. The protocol-blessed channel for structured data is used as intended; `content[]` is preserved for transcript display.
+
+**Migration from 0.9.x**: list responses changed from `[{summary text}, {JSON array}]` to a single content item with the `{count, items}` envelope. Any consumer reading `response.content[1].text` and parsing as a JSON array needs to switch to `response.content[0].text` and parse as the wrapper object (or simply read `response.structuredContent`). The `list_pipeline_jobs + include_log_tail` extension renamed its data field from `jobs` to `items` for cross-tool consistency.
+
 ---
 
 ## Transports
