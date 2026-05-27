@@ -435,7 +435,7 @@ describe('Pipeline & Job tools', () => {
     }
   });
 
-  it('list_pipeline_jobs — include_log_tail extension returns logs for failed jobs', async () => {
+  it('list_pipeline_jobs — include_log_tail returns unified wrapper shape on all paths', async () => {
     const result = await globalThis.mcpClient.callTool({
       name: 'list_pipeline_jobs',
       arguments: {
@@ -445,8 +445,57 @@ describe('Pipeline & Job tools', () => {
         log_tail_lines: 10,
       },
     });
-    // Whether or not there are failed jobs, the call should succeed
-    const text = extractText(result);
-    expect(text.length).toBeGreaterThan(0);
+
+    // Contract: when include_log_tail=true, response shape is ALWAYS
+    // { jobs: [...], log_fetch_errors?: [...] } regardless of whether failed
+    // jobs exist or log fetches errored. Verifies the round-3 fallback fix.
+    const data = extractJson<{
+      jobs: Array<{ id: number; name: string; status: string; log_tail?: string }>;
+      log_fetch_errors?: Array<{ job_id: number; error: string }>;
+    }>(result);
+
+    expect(Array.isArray(data.jobs)).toBe(true);
+    expect(data.jobs.length).toBeGreaterThan(0);
+    // Every job in the wrapper has at least id/name/status from the base schema
+    for (const job of data.jobs) {
+      expect(typeof job.id).toBe('number');
+      expect(typeof job.name).toBe('string');
+      expect(typeof job.status).toBe('string');
+    }
+    // If any failed jobs were present, they should carry log_tail (best-effort)
+    const failedWithLogs = data.jobs.filter(j => j.status === 'failed' && typeof j.log_tail === 'string');
+    const failedTotal = data.jobs.filter(j => j.status === 'failed').length;
+    if (failedTotal > 0) {
+      // log_tail attachment is best-effort; either tails populated or errors recorded
+      const errorsLen = data.log_fetch_errors?.length ?? 0;
+      expect(failedWithLogs.length + errorsLen).toBeGreaterThan(0);
+    }
+  });
+
+  it('list_pipeline_jobs — include_log_tail wrapper holds even with zero failed jobs (round-3 fallback fix)', async () => {
+    // Filter to a status that won't have failures - the wrapper shape must
+    // still apply even when slicedIds is empty (regression test for the
+    // round-3 bug where formatJobsResponse leaked through).
+    const result = await globalThis.mcpClient.callTool({
+      name: 'list_pipeline_jobs',
+      arguments: {
+        project_id: String(globalThis.fixtures.projectId),
+        pipeline_id: pipelineId,
+        include_log_tail: true,
+        scope: ['success'], // explicit non-failed scope
+        log_tail_lines: 10,
+      },
+    });
+
+    // The response MUST be the wrapper shape, not a flat array
+    const data = extractJson<{
+      jobs: unknown;
+      log_fetch_errors?: unknown;
+    }>(result);
+
+    expect(data).toHaveProperty('jobs');
+    expect(Array.isArray(data.jobs)).toBe(true);
+    // No failed jobs → no log_fetch_errors field expected
+    expect(data.log_fetch_errors).toBeUndefined();
   });
 });
