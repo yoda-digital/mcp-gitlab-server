@@ -16,7 +16,7 @@
  * - upload_group_wiki_attachment
  */
 import { describe, it, expect } from 'vitest';
-import { extractJson, extractText } from '../helpers/types.js';
+import { extractJson, extractListItems, extractText } from '../helpers/types.js';
 
 describe('Project Wiki tools', () => {
   it('list_project_wiki_pages — returns the provisioned page', async () => {
@@ -24,7 +24,7 @@ describe('Project Wiki tools', () => {
       name: 'list_project_wiki_pages',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const data = extractJson<Array<{ slug: string }>>(result);
+    const data = extractListItems<{ slug: string }>(result).items;
     expect(data.some((p) => p.slug === globalThis.fixtures.wikiPageSlug)).toBe(true);
   });
 
@@ -92,7 +92,7 @@ describe('Project Wiki tools', () => {
       name: 'list_project_wiki_pages',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const pages = extractJson<Array<{ slug: string }>>(listResult);
+    const pages = extractListItems<{ slug: string }>(listResult).items;
     expect(pages.some((p) => p.slug === slug)).toBe(false);
   });
 
@@ -134,7 +134,7 @@ describe.skip('Group Wiki tools', () => {
       name: 'list_group_wiki_pages',
       arguments: { group_id: String(globalThis.fixtures.groupId) },
     });
-    const data = extractJson<Array<{ slug: string }>>(result);
+    const data = extractListItems<{ slug: string }>(result).items;
     expect(data.length).toBeGreaterThan(0);
   });
 

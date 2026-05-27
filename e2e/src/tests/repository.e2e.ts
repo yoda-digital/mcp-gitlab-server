@@ -18,7 +18,7 @@
  * - fork_repository
  */
 import { describe, it, expect } from 'vitest';
-import { extractJson, extractText } from '../helpers/types.js';
+import { extractJson, extractListItems, extractText } from '../helpers/types.js';
 
 describe('Repository tools', () => {
   it('search_repositories — finds the test project', async () => {
@@ -35,7 +35,7 @@ describe('Repository tools', () => {
       name: 'get_repository_tree',
       arguments: { project_id: String(globalThis.fixtures.projectId), path: '', ref: 'main' },
     });
-    const data = extractJson<Array<{ name: string }>>(result);
+    const data = extractListItems<{ name: string }>(result).items;
     expect(data.some((f) => f.name === 'README.md')).toBe(true);
   });
 
@@ -90,7 +90,7 @@ describe('Repository tools', () => {
       name: 'get_repository_tree',
       arguments: { project_id: String(globalThis.fixtures.projectId), path: '', ref: 'main' },
     });
-    const tree = extractJson<Array<{ name: string }>>(treeResult);
+    const tree = extractListItems<{ name: string }>(treeResult).items;
     expect(tree.some((f) => f.name === 'multi-a.txt')).toBe(true);
     expect(tree.some((f) => f.name === 'multi-b.txt')).toBe(true);
   });
@@ -100,7 +100,7 @@ describe('Repository tools', () => {
       name: 'list_commits',
       arguments: { project_id: String(globalThis.fixtures.projectId), ref_name: 'main' },
     });
-    const data = extractJson<Array<{ id: string; title: string; author_name: string }>>(result);
+    const data = extractListItems<{ id: string; title: string; author_name: string }>(result).items;
     expect(data.length).toBeGreaterThan(0);
     expect(data[0].id).toMatch(/^[0-9a-f]{40}$/);
     expect(data[0].title).toBeDefined();
@@ -112,7 +112,7 @@ describe('Repository tools', () => {
       name: 'list_branches',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const data = extractJson<Array<{ name: string }>>(result);
+    const data = extractListItems<{ name: string }>(result).items;
     expect(data.some((b) => b.name === 'main')).toBe(true);
   });
 
@@ -144,7 +144,7 @@ describe('Repository tools', () => {
       name: 'list_branches',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const branches = extractJson<Array<{ name: string }>>(listResult);
+    const branches = extractListItems<{ name: string }>(listResult).items;
     expect(branches.some((b) => b.name === branchName)).toBe(false);
   });
 
@@ -198,7 +198,7 @@ describe('Repository tools', () => {
       name: 'list_tags',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const data = extractJson<Array<{ name: string }>>(result);
+    const data = extractListItems<{ name: string }>(result).items;
     expect(data.some((t) => t.name === tagName)).toBe(true);
   });
 

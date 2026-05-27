@@ -17,7 +17,7 @@
  * The provision script creates a minimal CI config.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { extractJson, extractText } from '../helpers/types.js';
+import { extractJson, extractListItems, extractText } from '../helpers/types.js';
 
 describe('Pipeline & Job tools', () => {
   let pipelineId: number;
@@ -63,7 +63,7 @@ describe('Pipeline & Job tools', () => {
       name: 'list_pipelines',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const data = extractJson<Array<{ id: number; status: string; ref: string }>>(result);
+    const data = extractListItems<{ id: number; status: string; ref: string }>(result).items;
     expect(data.length).toBeGreaterThan(0);
     expect(data[0].id).toBeGreaterThan(0);
     expect(data[0].status).toBeDefined();
@@ -93,7 +93,7 @@ describe('Pipeline & Job tools', () => {
         pipeline_id: pipelineId,
       },
     });
-    const data = extractJson<Array<{ id: number; name: string; status: string; stage: string }>>(result);
+    const data = extractListItems<{ id: number; name: string; status: string; stage: string }>(result).items;
     expect(data.length).toBeGreaterThan(0);
     expect(data[0].name).toBe('test_job');
     expect(data[0].stage).toBeDefined();
@@ -185,7 +185,7 @@ describe('Pipeline & Job tools', () => {
       name: 'list_pipelines',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const pipelines = extractJson<Array<{ id: number; status: string }>>(listResult);
+    const pipelines = extractListItems<{ id: number; status: string }>(listResult).items;
     const retryable = pipelines.find((p) => ['canceled', 'failed', 'success'].includes(p.status));
 
     if (!retryable) {
@@ -226,7 +226,7 @@ describe('Pipeline & Job tools', () => {
         pipeline_id: pipeline.id,
       },
     });
-    const jobs = extractJson<Array<{ id: number; status: string }>>(jobsResult);
+    const jobs = extractListItems<{ id: number; status: string }>(jobsResult).items;
     const runningJob = jobs.find((j) => ['running', 'pending', 'created'].includes(j.status));
 
     if (!runningJob) {
@@ -254,7 +254,7 @@ describe('Pipeline & Job tools', () => {
       name: 'list_pipelines',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const pipelines = extractJson<Array<{ id: number; status: string }>>(listResult);
+    const pipelines = extractListItems<{ id: number; status: string }>(listResult).items;
 
     // Look for a pipeline with canceled/failed jobs
     for (const pl of pipelines) {
@@ -265,7 +265,7 @@ describe('Pipeline & Job tools', () => {
           pipeline_id: pl.id,
         },
       });
-      const jobs = extractJson<Array<{ id: number; status: string }>>(jobsResult);
+      const jobs = extractListItems<{ id: number; status: string }>(jobsResult).items;
       const retryableJob = jobs.find((j) => ['canceled', 'failed'].includes(j.status));
 
       if (retryableJob) {

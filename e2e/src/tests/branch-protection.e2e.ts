@@ -7,7 +7,7 @@
  * - unprotect_branch
  */
 import { describe, it, expect } from 'vitest';
-import { extractJson, extractText } from '../helpers/types.js';
+import { extractJson, extractListItems, extractText } from '../helpers/types.js';
 
 describe('Branch protection tools', () => {
   const branchToProtect = 'main';
@@ -44,7 +44,7 @@ describe('Branch protection tools', () => {
       name: 'list_protected_branches',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const data = extractJson<Array<{ name: string }>>(result);
+    const data = extractListItems<{ name: string }>(result).items;
     expect(data.some((b) => b.name === branchToProtect)).toBe(true);
   });
 
@@ -63,7 +63,7 @@ describe('Branch protection tools', () => {
       name: 'list_protected_branches',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const data = extractJson<Array<{ name: string }>>(listResult);
+    const data = extractListItems<{ name: string }>(listResult).items;
     expect(data.some((b) => b.name === branchToProtect)).toBe(false);
   });
 });

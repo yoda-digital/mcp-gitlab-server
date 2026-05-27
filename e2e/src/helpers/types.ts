@@ -69,3 +69,26 @@ export function extractJson<T = unknown>(result: ToolResult): T {
   }
   throw new Error(`No valid JSON in tool result. Content: ${textItems.map(t => t.text).join(' | ')}`);
 }
+
+/**
+ * Extract `items` from a list-* tool response that uses the unified
+ * `{count: number, items: T[]}` envelope shape (all `list_*` tools since
+ * 0.10.0 and `search_repositories`). Returns the destructured wrapper
+ * for callers that need both `count` and `items`; most call sites use
+ * the `.items` accessor directly:
+ *
+ *   const { items } = extractListItems<{ iid: number }>(result);
+ *   expect(items.some(i => i.iid === ...)).toBe(true);
+ *
+ * Asserts the wrapper shape at runtime so a mis-shaped response fails
+ * loudly here rather than producing a confusing downstream TypeError.
+ */
+export function extractListItems<T = unknown>(result: ToolResult): { count: number; items: T[] } {
+  const data = extractJson<{ count: number; items: T[] }>(result);
+  if (typeof data?.count !== 'number' || !Array.isArray(data?.items)) {
+    throw new Error(
+      `Expected list response shape {count: number, items: T[]}. Got: ${JSON.stringify(data)?.slice(0, 200)}`
+    );
+  }
+  return data;
+}

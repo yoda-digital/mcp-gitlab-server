@@ -10,7 +10,7 @@
  * - update_milestone
  */
 import { describe, it, expect } from 'vitest';
-import { extractJson } from '../helpers/types.js';
+import { extractJson, extractListItems } from '../helpers/types.js';
 
 describe('Label tools', () => {
   it('list_labels — returns the provisioned label', async () => {
@@ -18,7 +18,7 @@ describe('Label tools', () => {
       name: 'list_labels',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const data = extractJson<Array<{ name: string }>>(result);
+    const data = extractListItems<{ name: string }>(result).items;
     expect(data.some((l) => l.name === globalThis.fixtures.labelName)).toBe(true);
   });
 
@@ -42,7 +42,7 @@ describe('Label tools', () => {
       name: 'list_labels',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const labels = extractJson<Array<{ id: number; name: string }>>(listResult);
+    const labels = extractListItems<{ id: number; name: string }>(listResult).items;
     const label = labels.find((l) => l.name === 'e2e-priority-high');
     expect(label).toBeDefined();
 
@@ -66,7 +66,7 @@ describe('Milestone tools', () => {
       name: 'list_milestones',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const data = extractJson<Array<{ title: string }>>(result);
+    const data = extractListItems<{ title: string }>(result).items;
     expect(data.some((m) => m.title === globalThis.fixtures.milestoneName)).toBe(true);
   });
 
@@ -89,7 +89,7 @@ describe('Milestone tools', () => {
       name: 'list_milestones',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const milestones = extractJson<Array<{ id: number; title: string }>>(listResult);
+    const milestones = extractListItems<{ id: number; title: string }>(listResult).items;
     const ms = milestones.find((m) => m.title === globalThis.fixtures.milestoneName);
     expect(ms).toBeDefined();
 

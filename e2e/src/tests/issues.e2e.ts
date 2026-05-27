@@ -10,7 +10,7 @@
  * - list_issue_discussions
  */
 import { describe, it, expect } from 'vitest';
-import { extractJson } from '../helpers/types.js';
+import { extractJson, extractListItems } from '../helpers/types.js';
 
 describe('Issue tools', () => {
   it('list_issues — returns the provisioned issue', async () => {
@@ -18,7 +18,7 @@ describe('Issue tools', () => {
       name: 'list_issues',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const data = extractJson<Array<{ iid: number }>>(result);
+    const data = extractListItems<{ iid: number }>(result).items;
     expect(data.some((i) => i.iid === globalThis.fixtures.issueIid)).toBe(true);
   });
 
@@ -71,7 +71,7 @@ describe('Issue tools', () => {
         issue_iid: globalThis.fixtures.issueIid,
       },
     });
-    const data = extractJson<Array<{ body: string }>>(result);
+    const data = extractListItems<{ body: string }>(result).items;
     expect(data.some((n) => n.body.includes('E2E test comment'))).toBe(true);
   });
 
@@ -83,7 +83,7 @@ describe('Issue tools', () => {
         issue_iid: globalThis.fixtures.issueIid,
       },
     });
-    const data = extractJson<Array<{ id: string }>>(result);
+    const data = extractListItems<{ id: string }>(result).items;
     expect(data.length).toBeGreaterThan(0);
   });
 });
