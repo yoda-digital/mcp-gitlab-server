@@ -137,7 +137,8 @@ import {
   formatProtectedBranchesResponse,
   formatUsersResponse,
   formatGroupsResponse,
-  jsonResponse
+  jsonResponse,
+  statusResponse
 } from './formatters.js';
 import { isValidISODate } from './utils.js';
 
@@ -1077,7 +1078,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "delete_project_wiki_page": {
         const args = DeleteProjectWikiPageSchema.parse(request.params.arguments);
         await gitlabApi.deleteProjectWikiPage(args.project_id, args.slug);
-        return { content: [{ type: "text", text: `Wiki page '${args.slug}' has been deleted.` }] };
+        return statusResponse(
+          `Wiki page '${args.slug}' has been deleted.`,
+          { status: "deleted", resource: "project_wiki_page", project_id: args.project_id, slug: args.slug }
+        );
       }
 
       case "upload_project_wiki_attachment": {
@@ -1132,7 +1136,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "delete_group_wiki_page": {
         const args = DeleteGroupWikiPageSchema.parse(request.params.arguments);
         await gitlabApi.deleteGroupWikiPage(args.group_id, args.slug);
-        return { content: [{ type: "text", text: `Wiki page '${args.slug}' has been deleted.` }] };
+        return statusResponse(
+          `Wiki page '${args.slug}' has been deleted.`,
+          { status: "deleted", resource: "group_wiki_page", group_id: args.group_id, slug: args.slug }
+        );
       }
 
       case "upload_group_wiki_attachment": {
@@ -1474,7 +1481,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "get_job_log": {
         const args = GetJobLogSchema.parse(request.params.arguments);
         const log = await gitlabApi.getJobLog(args.project_id, args.job_id);
-        return { content: [{ type: "text", text: log }] };
+        const byte_count = Buffer.byteLength(log, "utf8");
+        let line_count = 0;
+        for (let i = 0; i < log.length; i++) {
+          if (log.charCodeAt(i) === 10) line_count++;
+        }
+        if (log.length > 0 && log.charCodeAt(log.length - 1) !== 10) line_count++;
+        return statusResponse(
+          log,
+          { job_id: args.job_id, log, byte_count, line_count }
+        );
       }
 
       case "get_pipeline_summary": {
@@ -1567,7 +1583,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "delete_branch": {
         const args = DeleteBranchSchema.parse(request.params.arguments);
         await gitlabApi.deleteBranch(args.project_id, args.branch);
-        return { content: [{ type: "text", text: `Branch '${args.branch}' has been deleted.` }] };
+        return statusResponse(
+          `Branch '${args.branch}' has been deleted.`,
+          { status: "deleted", resource: "branch", project_id: args.project_id, branch: args.branch }
+        );
       }
 
       case "compare_branches": {
@@ -1841,7 +1860,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "unprotect_branch": {
         const args = UnprotectBranchSchema.parse(request.params.arguments);
         await gitlabApi.unprotectBranch(args.project_id, args.name);
-        return { content: [{ type: "text", text: `Branch '${args.name}' is no longer protected.` }] };
+        return statusResponse(
+          `Branch '${args.name}' is no longer protected.`,
+          { status: "unprotected", resource: "branch", project_id: args.project_id, branch: args.name }
+        );
       }
 
       // ===========================================================================
@@ -1951,7 +1973,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "delete_group": {
         const args = DeleteGroupSchema.parse(request.params.arguments);
         await gitlabApi.deleteGroup(args.group_id);
-        return { content: [{ type: "text", text: `Group '${args.group_id}' has been scheduled for deletion.` }] };
+        return statusResponse(
+          `Group '${args.group_id}' has been scheduled for deletion.`,
+          { status: "scheduled_for_deletion", resource: "group", group_id: args.group_id }
+        );
       }
 
       default:

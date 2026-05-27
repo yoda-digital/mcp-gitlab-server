@@ -49,6 +49,19 @@ export function jsonResponse<T extends Record<string, unknown>>(data: T) {
 }
 
 /**
+ * Status/text response with structured payload. Use for tools whose primary
+ * surface is a human-readable status line (delete/unprotect handlers) or a
+ * raw blob (job logs) where content[0].text is the natural display, but
+ * structuredContent still carries the typed fields for programmatic clients.
+ */
+export function statusResponse<T extends Record<string, unknown>>(message: string, data: T) {
+  return {
+    content: [{ type: "text" as const, text: message }],
+    structuredContent: data,
+  };
+}
+
+/**
  * Formats the events response.
  */
 export function formatEventsResponse(events: GitLabEventsResponse) {
