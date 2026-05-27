@@ -2379,6 +2379,56 @@ export class GitLabApi {
   }
 
   /**
+   * Return the last `n` newline-delimited slices of `log` without allocating
+   * an array of all lines. Walks `\n` from the end via `lastIndexOf` so the
+   * memory footprint is O(tail) instead of O(total).
+   *
+   * Behavior matches `log.split('\n').slice(-n).join('\n')` for the cases we
+   * care about, including logs that end with a trailing `\n` (the trailing
+   * empty slice is preserved).
+   */
+  private logTail(log: string, n: number): string {
+    if (n <= 0 || log === '') return '';
+    let idx = log.length;
+    for (let i = 0; i < n; i++) {
+      const nl = log.lastIndexOf('\n', idx - 1);
+      if (nl < 0) return log; // fewer than n lines exist; return the whole log
+      idx = nl;
+    }
+    return log.slice(idx + 1);
+  }
+
+  /**
+   * Return the first `n` newline-delimited slices of `log` without allocating
+   * an array of all lines. Walks `\n` from the start via `indexOf` so the
+   * memory footprint is O(head) instead of O(total).
+   */
+  private logHead(log: string, n: number): string {
+    if (n <= 0 || log === '') return '';
+    let idx = -1;
+    for (let i = 0; i < n; i++) {
+      const nl = log.indexOf('\n', idx + 1);
+      if (nl < 0) return log; // fewer than n lines exist; return the whole log
+      idx = nl;
+    }
+    return log.slice(0, idx);
+  }
+
+  /**
+   * Count newline-delimited slices in `log` without allocating substrings.
+   * Matches `log.split('\n').length` for non-empty input; returns 0 for the
+   * empty string (where split would return [''] of length 1).
+   */
+  private countLines(log: string): number {
+    if (log === '') return 0;
+    let count = 1;
+    for (let i = 0; i < log.length; i++) {
+      if (log.charCodeAt(i) === 10 /* \n */) count++;
+    }
+    return count;
+  }
+
+  /**
    * Clean a raw job log: strip ANSI codes, section markers, and timestamps.
    */
   private cleanLog(raw: string): string {
@@ -2521,9 +2571,7 @@ export class GitLabApi {
         jobsToFetchLogs.map(async (job) => {
           try {
             const rawLog = await this.getJobLog(projectId, job.id);
-            const cleaned = this.cleanLog(rawLog);
-            const lines = cleaned.split('\n');
-            const tail = lines.slice(-logLines).join('\n');
+            const tail = this.logTail(this.cleanLog(rawLog), logLines);
             const stageJobs = stageMap.get(job.stage);
             const target = stageJobs?.find(j => j.id === job.id);
             if (target) target.log_tail = tail;
@@ -2604,13 +2652,17 @@ export class GitLabApi {
     let sectionMatched: boolean | null = null;
     if (options.section) {
       sectionMatched = true;
-      const sectionStart = new RegExp(`section_start:\\d+:${options.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\\n]*\\n?`, 'i');
-      const sectionEnd = new RegExp(`section_end:\\d+:${options.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+      const escapedSection = options.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const sectionStart = new RegExp(`section_start:\\d+:${escapedSection}[^\\n]*\\n?`, 'i');
+      // `g` flag enables `lastIndex`-based seeking so we don't have to slice
+      // the (potentially multi-MB) rawLog before exec.
+      const sectionEnd = new RegExp(`section_end:\\d+:${escapedSection}`, 'gi');
       const startMatch = sectionStart.exec(rawLog);
       if (startMatch) {
         const startIdx = startMatch.index + startMatch[0].length;
-        const endMatch = sectionEnd.exec(rawLog.slice(startIdx));
-        const endIdx = endMatch ? startIdx + endMatch.index : rawLog.length;
+        sectionEnd.lastIndex = startIdx;
+        const endMatch = sectionEnd.exec(rawLog);
+        const endIdx = endMatch ? endMatch.index : rawLog.length;
         log = rawLog.slice(startIdx, endIdx);
       } else {
         sectionMatched = false;
@@ -2626,38 +2678,39 @@ export class GitLabApi {
       log = this.stripTimestamps(log);
     }
 
-    // Error-only extraction
+    // Error-only extraction: regex-match whole lines containing any of the
+    // error keywords. Avoids splitting the log into an array of all lines
+    // when most are non-matching.
     let errorLinesMatched: number | null = null;
     if (options.error_only) {
-      const lines = log.split('\n');
-      const errorLines = lines.filter(line => {
-        const lower = line.toLowerCase();
-        return lower.includes('error') || lower.includes('fatal') ||
-          lower.includes('failed') || lower.includes('exception') ||
-          lower.includes('traceback') || lower.includes('panic');
-      });
-      errorLinesMatched = errorLines.length;
-      // Return only matched lines; empty string if none found (not the full log)
-      log = errorLines.join('\n');
+      const errorLineRegex = /^.*(?:error|fatal|failed|exception|traceback|panic).*$/gim;
+      const matches = log.match(errorLineRegex);
+      errorLinesMatched = matches?.length ?? 0;
+      log = matches?.join('\n') ?? '';
     }
 
-    // Apply tail/head
+    // Apply tail/head via index-based helpers - O(K) memory vs the O(N)
+    // array-of-all-lines pattern. Compare against line counts in advance so
+    // we only truncate when the limit actually shrinks the log.
     let truncated = false;
-    const lines = log.split('\n');
-    if (options.tail && options.tail < lines.length) {
-      log = lines.slice(-options.tail).join('\n');
-      truncated = true;
-    } else if (options.head && options.head < lines.length) {
-      log = lines.slice(0, options.head).join('\n');
-      truncated = true;
+    if (options.tail !== undefined) {
+      const total = this.countLines(log);
+      if (options.tail < total) {
+        log = this.logTail(log, options.tail);
+        truncated = true;
+      }
+    } else if (options.head !== undefined) {
+      const total = this.countLines(log);
+      if (options.head < total) {
+        log = this.logHead(log, options.head);
+        truncated = true;
+      }
     }
 
     return {
       job_id: jobId,
       log,
-      // `''.split('\n')` returns [''] (length 1), so guard the empty-log case
-      // to report a faithful 0 instead of a misleading 1.
-      line_count: log === '' ? 0 : log.split('\n').length,
+      line_count: this.countLines(log),
       truncated,
       sections_found: sectionsFound,
       section_matched: sectionMatched,
@@ -2682,9 +2735,7 @@ export class GitLabApi {
       jobIds.map(async (jobId) => {
         try {
           const rawLog = await this.getJobLog(projectId, jobId);
-          const cleaned = this.cleanLog(rawLog);
-          const lines = cleaned.split('\n');
-          tails.set(jobId, lines.slice(-cappedLines).join('\n'));
+          tails.set(jobId, this.logTail(this.cleanLog(rawLog), cappedLines));
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           errors.push({ job_id: jobId, error: msg });
