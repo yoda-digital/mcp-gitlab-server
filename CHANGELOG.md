@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing yet. New entries land here between releases._
+
+## [0.9.0] - 2026-05-27
+
+Pipeline investigation tools - three new MCP surfaces (`get_pipeline_summary`, `get_job_log_smart`, `list_pipeline_jobs` extension) for AI-agent-friendly CI failure investigation. Closes #64 (the reincarnation arc through #86 → #99). Substantial review cycle: 3 contributor rounds + 1 maintainer Path-B reincarnation + 5 codex bot review rounds + 2 pre-push agent passes closed 21 real bugs end-to-end.
+
+Contributors: @ecthelion77 (Olivier Gintrand) authored the original three-tool design + initial implementation + three response rounds; maintainer added contract-clarity / silent-failure / perf hardening on top via Path B reincarnation (#99).
+
 ### Added
 
 - **`get_pipeline_summary` tool** — single-call pipeline investigation returning
