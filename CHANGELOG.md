@@ -76,6 +76,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Cleaned logs had spurious blank lines and `tail: N` could shift by an
   empty line. New regex tail `\r?\n?` consumes the full CRLF combo.
   (#99 codex P2 round-3)
+- **`sections_found` surfaces the bare section name.** Previously emitted
+  `"script[collapsed=true]"` verbatim, which is unusable as a follow-up
+  `section:` argument (end markers never carry the `[option]` suffix and
+  would never match). Now strips the `[...]` collapsed-marker tail after
+  ANSI removal. (#99 codex P2 round-4)
+- **`pipeline_id: 0` no longer silently falls through to "latest pipeline".**
+  Schema now requires `z.number().int().positive()` and the runtime path
+  selector uses `!== undefined`. Previously a JS truthy check disagreed
+  with the schema's XOR refine. (#99 pre-push silent-failure-hunter)
+- **`section: ""` no longer silently skipped.** Schema now requires
+  `z.string().min(1)`; empty-string requests fail at parse instead of
+  silently returning the full log with `section_matched: null`.
+  (#99 pre-push silent-failure-hunter)
+- **`section` matching is now case-SENSITIVE.** Dropped the regex `i` flag.
+  GitLab section names are identifiers and case-insensitive matching
+  would create silent ambiguity between sibling sections like `Build`
+  and `build`. Aligns with the "exact-match" contract introduced in the
+  codex P2 round-2 fix. (#99 pre-push silent-failure-hunter LOW-2)
+- **Section markers are stripped regardless of `strip_ansi`.** Previously
+  section-marker stripping was bound to the `strip_ansi: true` path; a
+  caller debugging raw ANSI output would see raw `section_start:NNN:name`
+  bytes leak into `tail`/`head` windows. Section markers are unconditionally
+  noise and are now always stripped. (#99 pre-push code-simplifier)
+
+### Added
+
+- **`log_fetch_capped` field** in `get_pipeline_summary` summary and in
+  the `list_pipeline_jobs + include_log_tail` wrapper. Present as
+  `{ fetched: number; total_failed: number }` when the helper intentionally
+  skipped log-fetching for failed jobs beyond the cap
+  (`max_failed_jobs_with_logs` default 5, `max_log_tail_jobs` default 10).
+  Closes a silent fallback where callers saw a partial set of log tails
+  without any signal that more failed jobs existed. (#99 pre-push
+  silent-failure-hunter)
 
 ### Performance
 
