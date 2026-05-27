@@ -138,11 +138,19 @@ Every tool response populates BOTH `content[]` (the spec's presentational channe
 }
 ```
 
-**Composite tools** with side-band metadata (`list_pipeline_jobs + include_log_tail=true`, `get_pipeline_summary`) follow the list envelope and surface optional fields alongside `items`:
+**Composite list tools** with side-band metadata (currently `list_pipeline_jobs + include_log_tail=true`) follow the list envelope and surface optional fields alongside `items`:
 ```json
 {
   "content": [{ "type": "text", "text": "{ \"count\": N, \"items\": [...], \"log_fetch_errors\": [...], \"log_fetch_capped\": {...} }" }],
   "structuredContent": { "count": N, "items": [...], "log_fetch_errors": [...], "log_fetch_capped": {...} }
+}
+```
+
+**Atomic-summary tools** (`get_pipeline_summary`) return a fixed-shape investigation payload rather than a list envelope. The top-level keys are `pipeline`, `stages`, `truncated`, and `summary`; `stages[].jobs[].log_tail` is added when `include_logs=true`, and `summary.log_fetch_errors` / `summary.log_fetch_capped` appear only when relevant:
+```json
+{
+  "content": [{ "type": "text", "text": "{ \"pipeline\": {...}, \"stages\": [...], \"truncated\": false, \"summary\": { \"total_jobs\": N, \"passed\": N, \"failed\": N, \"skipped\": N, \"manual\": N, \"canceled\": N, \"failure_pattern\": {...} } }" }],
+  "structuredContent": { "pipeline": {...}, "stages": [...], "truncated": false, "summary": { "total_jobs": N, "passed": N, "failed": N, "skipped": N, "manual": N, "canceled": N, "failure_pattern": {...} } }
 }
 ```
 
