@@ -69,6 +69,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `section: "build"` would silently return `build_extra` content with
   `section_matched: true`. Now uses a lookahead `(?=[\r\n\[]|$)` after the
   name to require GitLab's actual section delimiters. (#99 codex P2 round-2)
+- **`stripSections` now consumes both CR and LF after the marker.** GitLab's
+  section line `section_*:NNN:name\r\x1B[0K\n` collapses to
+  `section_*:NNN:name\r\n` after ANSI stripping; the previous regex tail
+  `[\r\n]?` consumed only one of CR/LF, leaving an orphan `\n` per marker.
+  Cleaned logs had spurious blank lines and `tail: N` could shift by an
+  empty line. New regex tail `\r?\n?` consumes the full CRLF combo.
+  (#99 codex P2 round-3)
 
 ### Performance
 
