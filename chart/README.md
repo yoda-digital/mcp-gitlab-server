@@ -66,10 +66,12 @@ ingress controller with cookie-based routing). See
 | config.CORS_ALLOW_ORIGINS | string | `""` | Comma-separated list of allowed CORS origins. In PAT-loopback mode: defaults to "*" if empty (local dev only). In OAuth mode: no default (deny browser cross-origin access). |
 | config.HEALTHZ_MAX_SESSIONS | string | `"10000"` | Max sessions before /healthz returns 503 (default 10000) |
 | config.HOST | string | `"0.0.0.0"` | Bind address. Pods must bind to all interfaces for the Service to reach them, so the chart sets HOST=0.0.0.0. Combined with AUTH_MODE=oauth below, network exposure is auth-gated. The application's own default is HOST=127.0.0.1 (loopback) for non-Helm local-dev safety. |
+| enabled | bool | `true` | Sub-chart support: Helm sets this automatically when used as a dependency |
 | existingSecret | string | `""` | Use an existing Secret instead of creating one. The Secret must contain the keys listed in secret{} above. |
 | extraEnv | list | `[]` | Extra env vars (list of {name, value} or {name, valueFrom}) |
 | extraEnvFrom | list | `[]` | Extra envFrom (list of secretRef/configMapRef) |
 | fullnameOverride | string | `""` |  |
+| global | object | `{}` | Sub-chart support: parent chart globals are passed here by Helm |
 | image.digest | string | `""` | Image digest (sha256:...). When set, takes precedence over tag. |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"ghcr.io/yoda-digital/mcp-gitlab-server"` |  |

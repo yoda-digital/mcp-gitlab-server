@@ -1,5 +1,11 @@
 replicaCount: 1
 
+# -- Sub-chart support: Helm sets this automatically when used as a dependency
+enabled: true
+
+# -- Sub-chart support: parent chart globals are passed here by Helm
+global: {}
+
 # ===========================================================================
 # Fail-loud guards
 # ===========================================================================
