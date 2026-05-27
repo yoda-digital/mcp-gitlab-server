@@ -148,7 +148,10 @@ export type StageStatus = 'failed' | 'running' | 'pending' | 'manual' | 'skipped
  *   `unreasoned_count === 0` every failure matches the diagnosis; when > 0, some
  *   failures could not be characterized.
  * - `mixed`: N≥2 failed jobs with at least two distinct `failure_reason` values.
- *   `reasons` maps each reason to its count.
+ *   `reasons` maps each reason to its count. `unreasoned_count` is the number of
+ *   failed jobs whose `failure_reason` was missing/empty and could not be
+ *   bucketed into `reasons` (≥0); `sum(reasons) + unreasoned_count` equals the
+ *   total number of failed jobs.
  * - `unknown`: N≥2 failed jobs where every `failure_reason` is missing/empty.
  *   GitLab gave us nothing to characterize; `count` is the total failure count.
  */
@@ -156,7 +159,7 @@ export type FailurePattern =
   | { kind: 'no_failures' }
   | { kind: 'single'; reason: string | null; job_id: number }
   | { kind: 'shared_reason'; reason: string; count: number; unreasoned_count: number }
-  | { kind: 'mixed'; reasons: Record<string, number> }
+  | { kind: 'mixed'; reasons: Record<string, number>; unreasoned_count: number }
   | { kind: 'unknown'; count: number };
 
 /**
@@ -2415,7 +2418,11 @@ export class GitLabApi {
     }
     const counts: Record<string, number> = {};
     for (const r of reasons) counts[r] = (counts[r] || 0) + 1;
-    return { kind: 'mixed', reasons: counts };
+    return {
+      kind: 'mixed',
+      reasons: counts,
+      unreasoned_count: failedJobs.length - reasons.length,
+    };
   }
 
   /**
