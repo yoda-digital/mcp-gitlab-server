@@ -64,6 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `shared_reason`. Previously the mixed branch silently dropped failed jobs
   whose `failure_reason` was missing/empty from the visible reason histogram.
   (#99 codex)
+- **`get_job_log_smart` section extraction is now exact-match.** The previous
+  regex `section_start:\d+:NAME[^\n]*\n?` accepted a prefix match - requesting
+  `section: "build"` would silently return `build_extra` content with
+  `section_matched: true`. Now uses a lookahead `(?=[\r\n\[]|$)` after the
+  name to require GitLab's actual section delimiters. (#99 codex P2 round-2)
 
 ### Performance
 
