@@ -1405,34 +1405,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           per_page: args.per_page
         });
 
-        // Extension: include log tails for failed jobs if requested
+        // Extension: include log tails for failed jobs if requested.
+        // When include_log_tail is true, response shape is ALWAYS the unified
+        // wrapper { jobs, log_fetch_errors? } so consumers can rely on a stable
+        // contract regardless of whether the pipeline had failed jobs or whether
+        // log fetches succeeded.
         if (args.include_log_tail) {
           const failedJobIds = jobs.items
             .filter(j => j.status === 'failed')
             .map(j => j.id);
           const maxJobs = Math.min(args.max_log_tail_jobs ?? 10, 20);
           const slicedIds = failedJobIds.slice(0, maxJobs);
+          let tails = new Map<number, string>();
+          let errors: Array<{ job_id: number; error: string }> = [];
           if (slicedIds.length > 0) {
-            const { tails, errors } = await gitlabApi.getJobLogTails(
+            const result = await gitlabApi.getJobLogTails(
               args.project_id,
               slicedIds,
               args.log_tail_lines ?? 30
             );
-            const jobsWithLogs = jobs.items.map(j => ({
-              ...j,
-              ...(tails.has(j.id) ? { log_tail: tails.get(j.id) } : {})
-            }));
-            const errorSuffix = errors.length > 0 ? `, ${errors.length} failed` : '';
-            return {
-              content: [
-                { type: "text", text: `Found ${jobs.count} jobs (log tails: ${tails.size} success${errorSuffix})` },
-                { type: "text", text: JSON.stringify({
-                  jobs: jobsWithLogs,
-                  ...(errors.length > 0 ? { log_fetch_errors: errors } : {})
-                }, null, 2) }
-              ]
-            };
+            tails = result.tails;
+            errors = result.errors;
           }
+          const jobsWithLogs = jobs.items.map(j => ({
+            ...j,
+            ...(tails.has(j.id) ? { log_tail: tails.get(j.id) } : {})
+          }));
+          const errorSuffix = errors.length > 0 ? `, ${errors.length} failed` : '';
+          return {
+            content: [
+              { type: "text", text: `Found ${jobs.count} jobs (log tails: ${tails.size} success${errorSuffix})` },
+              { type: "text", text: JSON.stringify({
+                jobs: jobsWithLogs,
+                ...(errors.length > 0 ? { log_fetch_errors: errors } : {})
+              }, null, 2) }
+            ]
+          };
         }
 
         return formatJobsResponse(jobs);

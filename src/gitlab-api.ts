@@ -137,11 +137,25 @@ export type StageStatus = 'failed' | 'running' | 'pending' | 'manual' | 'skipped
 
 /**
  * Discriminated union for pipeline failure pattern analysis.
+ *
+ * Variants:
+ * - `no_failures`: zero failed jobs in the pipeline.
+ * - `single`: exactly one failed job. `reason` is `null` when GitLab returned no
+ *   `failure_reason` (or an empty string). `job_id` lets the caller fetch the log.
+ * - `shared_reason`: N≥2 failed jobs that all carry the same `failure_reason`.
+ *   `count` is the number of jobs carrying the reason. `unreasoned_count` is the
+ *   number of failed jobs with no `failure_reason` populated (≥0). When
+ *   `unreasoned_count === 0` every failure matches the diagnosis; when > 0, some
+ *   failures could not be characterized.
+ * - `mixed`: N≥2 failed jobs with at least two distinct `failure_reason` values.
+ *   `reasons` maps each reason to its count.
+ * - `unknown`: N≥2 failed jobs where every `failure_reason` is missing/empty.
+ *   GitLab gave us nothing to characterize; `count` is the total failure count.
  */
 export type FailurePattern =
   | { kind: 'no_failures' }
   | { kind: 'single'; reason: string | null; job_id: number }
-  | { kind: 'shared_reason'; reason: string; count: number }
+  | { kind: 'shared_reason'; reason: string; count: number; unreasoned_count: number }
   | { kind: 'mixed'; reasons: Record<string, number> }
   | { kind: 'unknown'; count: number };
 
@@ -2368,12 +2382,20 @@ export class GitLabApi {
     return this.stripTimestamps(this.stripSections(this.stripAnsi(raw)));
   }
 
-  /** Discriminated union for failure pattern analysis. */
+  /**
+   * Analyze a set of failed jobs and return a discriminated FailurePattern.
+   * `failure_reason` values that are null, undefined, or empty string are
+   * treated as "unreasoned" - they do not contribute to the reason histogram
+   * but their count is preserved via `unreasoned_count` on shared_reason or
+   * the `unknown` variant.
+   */
   private analyzeFailurePattern(failedJobs: GitLabJob[]): FailurePattern {
     if (failedJobs.length === 0) return { kind: 'no_failures' };
 
     if (failedJobs.length === 1) {
-      return { kind: 'single', reason: failedJobs[0].failure_reason ?? null, job_id: failedJobs[0].id };
+      // Normalize empty-string failure_reason to null so the contract reads as
+      // "either we have a reason string, or we have no reason at all".
+      return { kind: 'single', reason: failedJobs[0].failure_reason || null, job_id: failedJobs[0].id };
     }
 
     const reasons = failedJobs.map(j => j.failure_reason).filter(Boolean) as string[];
@@ -2384,7 +2406,12 @@ export class GitLabApi {
       return { kind: 'unknown', count: failedJobs.length };
     }
     if (uniqueReasons.length === 1) {
-      return { kind: 'shared_reason', reason: uniqueReasons[0], count: reasons.length };
+      return {
+        kind: 'shared_reason',
+        reason: uniqueReasons[0],
+        count: reasons.length,
+        unreasoned_count: failedJobs.length - reasons.length,
+      };
     }
     const counts: Record<string, number> = {};
     for (const r of reasons) counts[r] = (counts[r] || 0) + 1;
@@ -2392,9 +2419,15 @@ export class GitLabApi {
   }
 
   /**
-   * Derive stage status from its jobs, mirroring GitLab's aggregation logic.
-   * - allow_failure jobs that failed don't poison the stage
-   * - mixed success+skipped+canceled collapses to success
+   * Derive stage status from its jobs, mirroring GitLab's aggregation logic:
+   * - `allow_failure: true` jobs that failed do NOT poison the stage to 'failed'
+   * - mixed success+skipped+canceled+allow_failure-failed all collapse to 'success'
+   * - The final safety branch is unreachable in practice when jobs are validated
+   *   by `JobStatusEnum` (closed enum at src/schemas.ts). It exists as a
+   *   schema-drift canary: if GitLab ever returns a new status value AND the
+   *   schema is relaxed to accept it, the unrecognized mix is logged via
+   *   `console.error` and the function conservatively returns 'success' rather
+   *   than throwing.
    */
   private deriveStageStatus(jobs: GitLabJob[]): StageStatus {
     if (jobs.some(j => j.status === 'failed' && !j.allow_failure)) return 'failed';
@@ -2615,7 +2648,9 @@ export class GitLabApi {
     return {
       job_id: jobId,
       log,
-      line_count: log.split('\n').length,
+      // `''.split('\n')` returns [''] (length 1), so guard the empty-log case
+      // to report a faithful 0 instead of a misleading 1.
+      line_count: log === '' ? 0 : log.split('\n').length,
       truncated,
       sections_found: sectionsFound,
       section_matched: sectionMatched,
