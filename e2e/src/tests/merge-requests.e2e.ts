@@ -18,7 +18,7 @@
  * - merge_merge_request
  */
 import { describe, it, expect } from 'vitest';
-import { extractJson } from '../helpers/types.js';
+import { extractJson, extractListItems } from '../helpers/types.js';
 
 describe('Merge Request tools', () => {
   it('list_merge_requests — returns the provisioned MR', async () => {
@@ -26,7 +26,7 @@ describe('Merge Request tools', () => {
       name: 'list_merge_requests',
       arguments: { project_id: String(globalThis.fixtures.projectId), state: 'opened' },
     });
-    const data = extractJson<Array<{ iid: number }>>(result);
+    const data = extractListItems<{ iid: number }>(result).items;
     expect(data.some((mr) => mr.iid === globalThis.fixtures.mergeRequestIid)).toBe(true);
   });
 
@@ -61,7 +61,7 @@ describe('Merge Request tools', () => {
           merge_request_iid: globalThis.fixtures.mergeRequestIid,
         },
       });
-      const data = extractJson<Array<{ id: string }>>(result);
+      const data = extractListItems<{ id: string }>(result).items;
       if (data.length > 0) {
         expect(data[0].id).toMatch(/^[0-9a-f]+$/);
         return;
@@ -104,7 +104,7 @@ describe('Merge Request tools', () => {
         merge_request_iid: globalThis.fixtures.mergeRequestIid,
       },
     });
-    const data = extractJson<Array<{ body: string }>>(result);
+    const data = extractListItems<{ body: string }>(result).items;
     expect(data.some((n) => n.body.includes('E2E test MR comment'))).toBe(true);
   });
 
@@ -117,7 +117,7 @@ describe('Merge Request tools', () => {
         merge_request_iid: globalThis.fixtures.mergeRequestIid,
       },
     });
-    const notes = extractJson<Array<{ id: number; body: string; system: boolean }>>(listResult);
+    const notes = extractListItems<{ id: number; body: string; system: boolean }>(listResult).items;
     const userNote = notes.find((n) => !n.system && n.body.includes('E2E test MR comment'));
     expect(userNote).toBeDefined();
 
@@ -142,7 +142,7 @@ describe('Merge Request tools', () => {
         merge_request_iid: globalThis.fixtures.mergeRequestIid,
       },
     });
-    const data = extractJson<Array<{ id: string }>>(result);
+    const data = extractListItems<{ id: string }>(result).items;
     expect(data.length).toBeGreaterThan(0);
   });
 

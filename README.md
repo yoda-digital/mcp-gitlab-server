@@ -118,6 +118,68 @@ Full tool list in [`CLAUDE.md`](./CLAUDE.md). Per-tool docs for selected tools i
 
 Read-only mode (`GITLAB_READ_ONLY_MODE=true`) filters every mutating tool out at registration time. A misbehaving agent cannot see them, let alone call them.
 
+### Response shape contract (since 0.10.0)
+
+Every tool response populates BOTH `content[]` (the spec's presentational channel) AND `structuredContent` (the spec's typed-data channel) per the MCP `CallToolResult` schema. `structuredContent` is always a strict superset of `content[]` informationally: a client reading only `structuredContent` always receives the complete payload, while a client reading only `content[]` receives just the display surface. The two surfaces differ only in framing - `content[]` is the presentational projection (JSON-stringified, human-readable status line, or raw log blob), while `structuredContent` is the canonical typed source. For status tools and raw-blob tools (sections below), typed metadata like `status`, `resource`, `job_id`, `byte_count`, `line_count` lives exclusively in `structuredContent`; consume that channel for programmatic use.
+
+**List tools** (`list_issues`, `list_merge_requests`, `list_pipelines`, etc.) return:
+```json
+{
+  "content": [{ "type": "text", "text": "{ \"count\": N, \"items\": [ ... ] }" }],
+  "structuredContent": { "count": N, "items": [ ... ] }
+}
+```
+
+**Single-entity tools** (`get_pipeline`, `get_project_wiki_page`, `get_group_wiki_page`, `create_issue`, `create_merge_request`, etc.) return the entity directly:
+```json
+{
+  "content": [{ "type": "text", "text": "{ \"id\": 42, ... }" }],
+  "structuredContent": { "id": 42, ... }
+}
+```
+
+**Composite list tools** with side-band metadata (currently `list_pipeline_jobs + include_log_tail=true`) follow the list envelope and surface optional fields alongside `items`:
+```json
+{
+  "content": [{ "type": "text", "text": "{ \"count\": N, \"items\": [...], \"log_fetch_errors\": [...], \"log_fetch_capped\": {...} }" }],
+  "structuredContent": { "count": N, "items": [...], "log_fetch_errors": [...], "log_fetch_capped": {...} }
+}
+```
+
+**Atomic-summary tools** (`get_pipeline_summary`) return a fixed-shape investigation payload rather than a list envelope. The top-level keys are `pipeline`, `stages`, `truncated`, and `summary`; `stages[].jobs[].log_tail` is added when `include_logs=true`, and `summary.log_fetch_errors` / `summary.log_fetch_capped` appear only when relevant:
+```json
+{
+  "content": [{ "type": "text", "text": "{ \"pipeline\": {...}, \"stages\": [...], \"truncated\": false, \"summary\": { \"total_jobs\": N, \"passed\": N, \"failed\": N, \"skipped\": N, \"manual\": N, \"canceled\": N, \"failure_pattern\": {...} } }" }],
+  "structuredContent": { "pipeline": {...}, "stages": [...], "truncated": false, "summary": { "total_jobs": N, "passed": N, "failed": N, "skipped": N, "manual": N, "canceled": N, "failure_pattern": {...} } }
+}
+```
+
+**Status tools** (`delete_branch`, `delete_project_wiki_page`, `delete_group_wiki_page`, `delete_group`, `unprotect_branch`) keep a human-readable sentence in `content[0].text` for display, and mirror the same sentence in `structuredContent.message` alongside typed state fields:
+```json
+{
+  "content": [{ "type": "text", "text": "Branch 'foo' has been deleted." }],
+  "structuredContent": { "status": "deleted", "resource": "branch", "project_id": "namespace/repo", "branch": "foo", "message": "Branch 'foo' has been deleted." }
+}
+```
+
+**Raw-blob tools** (`get_job_log`) treat the blob itself as the natural display surface - `content[0].text` is the raw log, and `structuredContent.log` mirrors it byte-for-byte alongside metadata (`byte_count`, `line_count`) that programmatic clients would otherwise re-derive from the blob:
+```json
+{
+  "content": [{ "type": "text", "text": "Running job...\n..." }],
+  "structuredContent": { "job_id": 42, "log": "Running job...\n...", "byte_count": 17, "line_count": 2 }
+}
+```
+
+**Why both fields**: clients that iterate `content[]` and `JSON.parse(content[i].text)` (Claude Desktop, Continue, Cursor, Cline) work unchanged. Clients that consume tool output programmatically without parsing free-form text - MCP gateways like ContextForge, custom integrations - read `structuredContent` directly. The protocol-blessed channel for structured data is used as intended; `content[]` is preserved for transcript display.
+
+**Migration from 0.9.x**: several presentational shapes changed alongside the addition of `structuredContent`. The simplest migration path for every category below is to switch to `response.structuredContent`, which carries the canonical typed payload and is stable across categories.
+
+1. **23 `list_*` tools** (`list_branches`, `list_commits`, `list_environments`, `list_group_members`, `list_groups`, `list_group_subgroups`, `list_group_wiki_pages`, `list_issue_discussions`, `list_issue_notes`, `list_issues`, `list_labels`, `list_merge_request_discussions`, `list_merge_request_notes`, `list_merge_requests`, `list_milestones`, `list_pipeline_jobs`, `list_pipelines`, `list_project_members`, `list_project_wiki_pages`, `list_protected_branches`, `list_releases`, `list_tags`, `list_users`): `[{summary text}, {JSON array}]` collapsed to a single content item with the `{count, items}` envelope. Consumers reading `response.content[1].text` and parsing as a JSON array switch to `response.content[0].text` and parse as the wrapper, or read `response.structuredContent` directly. `list_group_projects` is the 24th `list_*` tool but its `content[]` is unchanged - its 0.9.x handler already emitted a single content item with `JSON.stringify({count, items})` via inline return; 0.10.0 only adds the `structuredContent` field on top.
+2. **`list_pipeline_jobs + include_log_tail=true`**: the composite list wrapper renamed its data field from `jobs` to `items` for cross-tool consistency. `log_fetch_errors` / `log_fetch_capped` siblings unchanged.
+3. **Non-`list_*` tools that moved to the list envelope** (4 tools): `push_files`, `get_repository_tree`, `get_project_events`, and `get_merge_request_commits` previously returned either a bare JSON array (`push_files`) or the `[{summary text}, {JSON array}]` pair (`get_repository_tree`, `get_project_events`, `get_merge_request_commits` via `formatTreeResponse`/`formatEventsResponse`/`formatCommitsResponse`). All four now return the same `{count, items}` envelope as `list_*` tools. Consumers iterating the array directly need to read `.items` instead.
+4. **Single-entity wiki tools that lost their human-readable prefix** (8 tools): every tool routed through `formatWikiPageResponse` or `formatWikiAttachmentResponse` previously returned `[{type: "text", text: "Wiki Page: <title>"}, {type: "text", text: <JSON>}]` (page tools) or `[{type: "text", text: "Wiki Attachment: <name>"}, {type: "text", text: <JSON>}]` (attachment tools). All now return a single content item with the bare JSON entity (no prefix). The same `title` / `file_name` information is carried inside the JSON. Affected tools: `get_project_wiki_page`, `create_project_wiki_page`, `edit_project_wiki_page`, `get_group_wiki_page`, `create_group_wiki_page`, `edit_group_wiki_page`, `upload_project_wiki_attachment`, `upload_group_wiki_attachment`.
+5. **Status tools and the raw-blob tool**: `delete_branch`, `unprotect_branch`, `delete_project_wiki_page`, `delete_group_wiki_page`, `delete_group`, and `get_job_log` retain their previous `content[0].text` shape (human-readable sentence or raw log) and additionally populate `structuredContent` with typed fields, per the contract above. No `content[]` shape change for these.
+
 ---
 
 ## Transports

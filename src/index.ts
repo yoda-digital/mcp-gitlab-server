@@ -136,7 +136,9 @@ import {
   formatMilestonesResponse,
   formatProtectedBranchesResponse,
   formatUsersResponse,
-  formatGroupsResponse
+  formatGroupsResponse,
+  jsonResponse,
+  statusResponse
 } from './formatters.js';
 import { isValidISODate } from './utils.js';
 
@@ -798,7 +800,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "fork_repository": {
         const args = ForkRepositorySchema.parse(request.params.arguments);
         const fork = await gitlabApi.forkProject(args.project_id, args.namespace);
-        return { content: [{ type: "text", text: JSON.stringify(fork, null, 2) }] };
+        return jsonResponse(fork);
       }
 
       case "create_branch": {
@@ -813,25 +815,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           ref
         });
 
-        return { content: [{ type: "text", text: JSON.stringify(branch, null, 2) }] };
+        return jsonResponse(branch);
       }
 
       case "search_repositories": {
         const args = SearchRepositoriesSchema.parse(request.params.arguments);
         const results = await gitlabApi.searchProjects(args.search, args.page, args.per_page);
-        return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
+        return jsonResponse(results);
       }
 
       case "create_repository": {
         const args = CreateRepositorySchema.parse(request.params.arguments);
         const repository = await gitlabApi.createRepository(args);
-        return { content: [{ type: "text", text: JSON.stringify(repository, null, 2) }] };
+        return jsonResponse(repository);
       }
 
       case "get_file_contents": {
         const args = GetFileContentsSchema.parse(request.params.arguments);
         const contents = await gitlabApi.getFileContents(args.project_id, args.file_path, args.ref);
-        return { content: [{ type: "text", text: JSON.stringify(contents, null, 2) }] };
+        return jsonResponse(contents);
       }
 
       case "create_or_update_file": {
@@ -844,7 +846,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           args.branch,
           args.previous_path
         );
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        return jsonResponse(result);
       }
 
       case "push_files": {
@@ -868,28 +870,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           }
         }
 
-        return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
+        return jsonResponse({ count: results.length, items: results });
       }
 
       case "create_issue": {
         const args = CreateIssueSchema.parse(request.params.arguments);
         const { project_id, ...options } = args;
         const issue = await gitlabApi.createIssue(project_id, options);
-        return { content: [{ type: "text", text: JSON.stringify(issue, null, 2) }] };
+        return jsonResponse(issue);
       }
 
       case "create_merge_request": {
         const args = CreateMergeRequestSchema.parse(request.params.arguments);
         const { project_id, ...options } = args;
         const mergeRequest = await gitlabApi.createMergeRequest(project_id, options);
-        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+        return jsonResponse(mergeRequest);
       }
 
       case "list_group_projects": {
         const args = ListGroupProjectsSchema.parse(request.params.arguments);
         const { group_id, ...options } = args;
         const results = await gitlabApi.listGroupProjects(group_id, options);
-        return { content: [{ type: "text", text: JSON.stringify(results, null, 2) }] };
+        return jsonResponse(results);
       }
 
       case "get_project_events": {
@@ -1076,7 +1078,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "delete_project_wiki_page": {
         const args = DeleteProjectWikiPageSchema.parse(request.params.arguments);
         await gitlabApi.deleteProjectWikiPage(args.project_id, args.slug);
-        return { content: [{ type: "text", text: `Wiki page '${args.slug}' has been deleted.` }] };
+        return statusResponse(
+          `Wiki page '${args.slug}' has been deleted.`,
+          { status: "deleted", resource: "project_wiki_page", project_id: args.project_id, slug: args.slug }
+        );
       }
 
       case "upload_project_wiki_attachment": {
@@ -1131,7 +1136,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "delete_group_wiki_page": {
         const args = DeleteGroupWikiPageSchema.parse(request.params.arguments);
         await gitlabApi.deleteGroupWikiPage(args.group_id, args.slug);
-        return { content: [{ type: "text", text: `Wiki page '${args.slug}' has been deleted.` }] };
+        return statusResponse(
+          `Wiki page '${args.slug}' has been deleted.`,
+          { status: "deleted", resource: "group_wiki_page", group_id: args.group_id, slug: args.slug }
+        );
       }
 
       case "upload_group_wiki_attachment": {
@@ -1223,7 +1231,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           args.merge_request_iid,
           args.sha
         );
-        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+        return jsonResponse(mergeRequest);
       }
 
       case "unapprove_merge_request": {
@@ -1232,7 +1240,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           args.project_id,
           args.merge_request_iid
         );
-        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+        return jsonResponse(mergeRequest);
       }
 
       case "merge_merge_request": {
@@ -1243,7 +1251,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           merge_request_iid,
           options
         );
-        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+        return jsonResponse(mergeRequest);
       }
 
       case "set_auto_merge": {
@@ -1254,7 +1262,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           merge_request_iid,
           options
         );
-        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+        return jsonResponse(mergeRequest);
       }
 
       case "cancel_auto_merge": {
@@ -1263,7 +1271,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           args.project_id,
           args.merge_request_iid
         );
-        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+        return jsonResponse(mergeRequest);
       }
 
       // Merge Request Notes Tools
@@ -1301,7 +1309,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           args.body,
           args.internal
         );
-        return { content: [{ type: "text", text: JSON.stringify(note, null, 2) }] };
+        return jsonResponse(note);
       }
 
       case "update_merge_request_note": {
@@ -1312,7 +1320,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           args.note_id,
           args.body
         );
-        return { content: [{ type: "text", text: JSON.stringify(note, null, 2) }] };
+        return jsonResponse(note);
       }
 
       case "list_merge_request_discussions": {
@@ -1362,25 +1370,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "get_pipeline": {
         const args = GetPipelineSchema.parse(request.params.arguments);
         const pipeline = await gitlabApi.getPipeline(args.project_id, args.pipeline_id);
-        return { content: [{ type: "text", text: JSON.stringify(pipeline, null, 2) }] };
+        return jsonResponse(pipeline);
       }
 
       case "trigger_pipeline": {
         const args = TriggerPipelineSchema.parse(request.params.arguments);
         const pipeline = await gitlabApi.triggerPipeline(args.project_id, args.ref, args.variables);
-        return { content: [{ type: "text", text: JSON.stringify(pipeline, null, 2) }] };
+        return jsonResponse(pipeline);
       }
 
       case "retry_pipeline": {
         const args = RetryPipelineSchema.parse(request.params.arguments);
         const pipeline = await gitlabApi.retryPipeline(args.project_id, args.pipeline_id);
-        return { content: [{ type: "text", text: JSON.stringify(pipeline, null, 2) }] };
+        return jsonResponse(pipeline);
       }
 
       case "cancel_pipeline": {
         const args = CancelPipelineSchema.parse(request.params.arguments);
         const pipeline = await gitlabApi.cancelPipeline(args.project_id, args.pipeline_id);
-        return { content: [{ type: "text", text: JSON.stringify(pipeline, null, 2) }] };
+        return jsonResponse(pipeline);
       }
 
       // ===========================================================================
@@ -1406,10 +1414,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         });
 
         // Extension: include log tails for failed jobs if requested.
-        // When include_log_tail is true, response shape is ALWAYS the unified
-        // wrapper { jobs, log_fetch_errors?, log_fetch_capped? } so consumers
-        // can rely on a stable contract regardless of whether the pipeline
-        // had failed jobs or whether log fetches succeeded.
+        // Response shape is the unified `{ count, items, log_fetch_errors?,
+        // log_fetch_capped? }` envelope, populated on BOTH content[0] and
+        // structuredContent so MCP gateways reading either surface get the
+        // full payload. `items` is the canonical field name across all
+        // list-* tools (renamed from `jobs` in 0.10.0).
         if (args.include_log_tail) {
           const failedJobIds = jobs.items
             .filter(j => j.status === 'failed')
@@ -1427,8 +1436,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
             tails = result.tails;
             errors = result.errors;
           }
-          const jobsWithLogs = jobs.items.map(j => ({
-            ...j,
+          // Mirror the exact field subset that formatJobsResponse projects in
+          // the non-include_log_tail path, so the include_log_tail response
+          // surface is consistent (and doesn't leak raw GitLab API fields like
+          // commit/pipeline/user/runner which would waste LLM context).
+          const itemsWithLogs = jobs.items.map(j => ({
+            id: j.id,
+            name: j.name,
+            stage: j.stage,
+            status: j.status,
+            ref: j.ref,
+            created_at: j.created_at,
+            started_at: j.started_at,
+            finished_at: j.finished_at,
+            duration: j.duration,
+            web_url: j.web_url,
+            allow_failure: j.allow_failure,
+            failure_reason: j.failure_reason,
             ...(tails.has(j.id) ? { log_tail: tails.get(j.id) } : {})
           }));
           // Cap signal: when failed jobs exceed max_log_tail_jobs, surface it
@@ -1436,18 +1460,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           const capped = failedJobIds.length > slicedIds.length
             ? { fetched: slicedIds.length, total_failed: failedJobIds.length }
             : undefined;
-          const errorSuffix = errors.length > 0 ? `, ${errors.length} failed` : '';
-          const cappedSuffix = capped ? `, capped at ${capped.fetched}/${capped.total_failed} failed` : '';
-          return {
-            content: [
-              { type: "text", text: `Found ${jobs.count} jobs (log tails: ${tails.size} success${errorSuffix}${cappedSuffix})` },
-              { type: "text", text: JSON.stringify({
-                jobs: jobsWithLogs,
-                ...(errors.length > 0 ? { log_fetch_errors: errors } : {}),
-                ...(capped ? { log_fetch_capped: capped } : {})
-              }, null, 2) }
-            ]
+          const payload: Record<string, unknown> = {
+            count: jobs.count,
+            items: itemsWithLogs,
+            ...(errors.length > 0 ? { log_fetch_errors: errors } : {}),
+            ...(capped ? { log_fetch_capped: capped } : {})
           };
+          return jsonResponse(payload);
         }
 
         return formatJobsResponse(jobs);
@@ -1456,13 +1475,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "get_job": {
         const args = GetJobSchema.parse(request.params.arguments);
         const job = await gitlabApi.getJob(args.project_id, args.job_id);
-        return { content: [{ type: "text", text: JSON.stringify(job, null, 2) }] };
+        return jsonResponse(job);
       }
 
       case "get_job_log": {
         const args = GetJobLogSchema.parse(request.params.arguments);
         const log = await gitlabApi.getJobLog(args.project_id, args.job_id);
-        return { content: [{ type: "text", text: log }] };
+        const byte_count = Buffer.byteLength(log, "utf8");
+        let line_count = 0;
+        for (let i = 0; i < log.length; i++) {
+          if (log.charCodeAt(i) === 10) line_count++;
+        }
+        if (log.length > 0 && log.charCodeAt(log.length - 1) !== 10) line_count++;
+        // structuredContent.log mirrors content[0].text - it IS the message,
+        // so we don't go through statusResponse (which would duplicate the
+        // blob into a `message` field). Parity via superset is preserved.
+        return {
+          content: [{ type: "text" as const, text: log }],
+          structuredContent: { job_id: args.job_id, log, byte_count, line_count },
+        };
       }
 
       case "get_pipeline_summary": {
@@ -1476,7 +1507,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           max_failed_jobs_with_logs: args.max_failed_jobs_with_logs,
         });
 
-        return { content: [{ type: "text", text: JSON.stringify(summary, null, 2) }] };
+        return jsonResponse(summary as unknown as Record<string, unknown>);
       }
 
       case "get_job_log_smart": {
@@ -1491,19 +1522,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           error_only: args.error_only,
         });
 
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        return jsonResponse(result as unknown as Record<string, unknown>);
       }
 
       case "retry_job": {
         const args = RetryJobSchema.parse(request.params.arguments);
         const job = await gitlabApi.retryJob(args.project_id, args.job_id);
-        return { content: [{ type: "text", text: JSON.stringify(job, null, 2) }] };
+        return jsonResponse(job);
       }
 
       case "cancel_job": {
         const args = CancelJobSchema.parse(request.params.arguments);
         const job = await gitlabApi.cancelJob(args.project_id, args.job_id);
-        return { content: [{ type: "text", text: JSON.stringify(job, null, 2) }] };
+        return jsonResponse(job);
       }
 
       // ===========================================================================
@@ -1529,7 +1560,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "get_environment": {
         const args = GetEnvironmentSchema.parse(request.params.arguments);
         const environment = await gitlabApi.getEnvironment(args.project_id, args.environment_id);
-        return { content: [{ type: "text", text: JSON.stringify(environment, null, 2) }] };
+        return jsonResponse(environment);
       }
 
       // ===========================================================================
@@ -1555,13 +1586,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "delete_branch": {
         const args = DeleteBranchSchema.parse(request.params.arguments);
         await gitlabApi.deleteBranch(args.project_id, args.branch);
-        return { content: [{ type: "text", text: `Branch '${args.branch}' has been deleted.` }] };
+        return statusResponse(
+          `Branch '${args.branch}' has been deleted.`,
+          { status: "deleted", resource: "branch", project_id: args.project_id, branch: args.branch }
+        );
       }
 
       case "compare_branches": {
         const args = CompareBranchesSchema.parse(request.params.arguments);
         const result = await gitlabApi.compareBranches(args.project_id, args.from, args.to, args.straight);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        return jsonResponse(result);
       }
 
       // ===========================================================================
@@ -1593,7 +1627,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           args.message,
           args.release_description
         );
-        return { content: [{ type: "text", text: JSON.stringify(tag, null, 2) }] };
+        return jsonResponse(tag);
       }
 
       // ===========================================================================
@@ -1640,7 +1674,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const args = CreateReleaseSchema.parse(request.params.arguments);
         const { project_id, tag_name, ...options } = args;
         const release = await gitlabApi.createRelease(project_id, tag_name, options);
-        return { content: [{ type: "text", text: JSON.stringify(release, null, 2) }] };
+        return jsonResponse(release);
       }
 
       // ===========================================================================
@@ -1651,7 +1685,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const args = UpdateIssueSchema.parse(request.params.arguments);
         const { project_id, issue_iid, ...options } = args;
         const issue = await gitlabApi.updateIssue(project_id, issue_iid, options);
-        return { content: [{ type: "text", text: JSON.stringify(issue, null, 2) }] };
+        return jsonResponse(issue);
       }
 
       case "create_issue_note": {
@@ -1662,7 +1696,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           args.body,
           args.internal
         );
-        return { content: [{ type: "text", text: JSON.stringify(note, null, 2) }] };
+        return jsonResponse(note);
       }
 
       // ===========================================================================
@@ -1694,14 +1728,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           args.description,
           args.priority
         );
-        return { content: [{ type: "text", text: JSON.stringify(label, null, 2) }] };
+        return jsonResponse(label);
       }
 
       case "update_label": {
         const args = UpdateLabelSchema.parse(request.params.arguments);
         const { project_id, label_id, ...options } = args;
         const label = await gitlabApi.updateLabel(project_id, label_id, options);
-        return { content: [{ type: "text", text: JSON.stringify(label, null, 2) }] };
+        return jsonResponse(label);
       }
 
       // ===========================================================================
@@ -1728,14 +1762,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const args = CreateMilestoneSchema.parse(request.params.arguments);
         const { project_id, title, ...options } = args;
         const milestone = await gitlabApi.createMilestone(project_id, title, options);
-        return { content: [{ type: "text", text: JSON.stringify(milestone, null, 2) }] };
+        return jsonResponse(milestone);
       }
 
       case "update_milestone": {
         const args = UpdateMilestoneSchema.parse(request.params.arguments);
         const { project_id, milestone_id, ...options } = args;
         const milestone = await gitlabApi.updateMilestone(project_id, milestone_id, options);
-        return { content: [{ type: "text", text: JSON.stringify(milestone, null, 2) }] };
+        return jsonResponse(milestone);
       }
 
       // ===========================================================================
@@ -1749,7 +1783,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           args.merge_request_iid,
           args.access_raw_diffs
         );
-        return { content: [{ type: "text", text: JSON.stringify(changes, null, 2) }] };
+        return jsonResponse(changes);
       }
 
       case "get_merge_request_commits": {
@@ -1775,7 +1809,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const args = UpdateMergeRequestSchema.parse(request.params.arguments);
         const { project_id, merge_request_iid, ...options } = args;
         const mergeRequest = await gitlabApi.updateMergeRequest(project_id, merge_request_iid, options);
-        return { content: [{ type: "text", text: JSON.stringify(mergeRequest, null, 2) }] };
+        return jsonResponse(mergeRequest);
       }
 
       case "rebase_merge_request": {
@@ -1785,7 +1819,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           args.merge_request_iid,
           args.skip_ci
         );
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        return jsonResponse(result);
       }
 
       case "create_merge_request_discussion": {
@@ -1796,7 +1830,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
           args.body,
           args.position
         );
-        return { content: [{ type: "text", text: JSON.stringify(discussion, null, 2) }] };
+        return jsonResponse(discussion);
       }
 
       // ===========================================================================
@@ -1823,13 +1857,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const args = ProtectBranchSchema.parse(request.params.arguments);
         const { project_id, name, ...options } = args;
         const branch = await gitlabApi.protectBranch(project_id, name, options);
-        return { content: [{ type: "text", text: JSON.stringify(branch, null, 2) }] };
+        return jsonResponse(branch);
       }
 
       case "unprotect_branch": {
         const args = UnprotectBranchSchema.parse(request.params.arguments);
         await gitlabApi.unprotectBranch(args.project_id, args.name);
-        return { content: [{ type: "text", text: `Branch '${args.name}' is no longer protected.` }] };
+        return statusResponse(
+          `Branch '${args.name}' is no longer protected.`,
+          { status: "unprotected", resource: "branch", project_id: args.project_id, branch: args.name }
+        );
       }
 
       // ===========================================================================
@@ -1840,14 +1877,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const args = GetProjectSchema.parse(request.params.arguments);
         const { project_id, ...options } = args;
         const project = await gitlabApi.getProject(project_id, options);
-        return { content: [{ type: "text", text: JSON.stringify(project, null, 2) }] };
+        return jsonResponse(project);
       }
 
       case "update_project": {
         const args = UpdateProjectSchema.parse(request.params.arguments);
         const { project_id, ...options } = args;
         const project = await gitlabApi.updateProject(project_id, options);
-        return { content: [{ type: "text", text: JSON.stringify(project, null, 2) }] };
+        return jsonResponse(project);
       }
 
       // ===========================================================================
@@ -1856,7 +1893,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
 
       case "get_current_user": {
         const user = await gitlabApi.getCurrentUser();
-        return { content: [{ type: "text", text: JSON.stringify(user, null, 2) }] };
+        return jsonResponse(user);
       }
 
       case "list_users": {
@@ -1877,7 +1914,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
       case "get_user": {
         const args = GetUserSchema.parse(request.params.arguments);
         const user = await gitlabApi.getUser(args.user_id);
-        return { content: [{ type: "text", text: JSON.stringify(user, null, 2) }] };
+        return jsonResponse(user);
       }
 
       // ===========================================================================
@@ -1903,7 +1940,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const args = GetGroupSchema.parse(request.params.arguments);
         const { group_id, ...options } = args;
         const group = await gitlabApi.getGroup(group_id, options);
-        return { content: [{ type: "text", text: JSON.stringify(group, null, 2) }] };
+        return jsonResponse(group);
       }
 
       case "list_group_subgroups": {
@@ -1926,20 +1963,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
         const args = CreateGroupSchema.parse(request.params.arguments);
         const { name, path, ...options } = args;
         const group = await gitlabApi.createGroup(name, path, options);
-        return { content: [{ type: "text", text: JSON.stringify(group, null, 2) }] };
+        return jsonResponse(group);
       }
 
       case "update_group": {
         const args = UpdateGroupSchema.parse(request.params.arguments);
         const { group_id, ...options } = args;
         const group = await gitlabApi.updateGroup(group_id, options);
-        return { content: [{ type: "text", text: JSON.stringify(group, null, 2) }] };
+        return jsonResponse(group);
       }
 
       case "delete_group": {
         const args = DeleteGroupSchema.parse(request.params.arguments);
         await gitlabApi.deleteGroup(args.group_id);
-        return { content: [{ type: "text", text: `Group '${args.group_id}' has been scheduled for deletion.` }] };
+        return statusResponse(
+          `Group '${args.group_id}' has been scheduled for deletion.`,
+          { status: "scheduled_for_deletion", resource: "group", group_id: args.group_id }
+        );
       }
 
       default:

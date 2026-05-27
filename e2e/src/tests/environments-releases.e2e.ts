@@ -8,7 +8,7 @@
  * - create_release
  */
 import { describe, it, expect } from 'vitest';
-import { extractJson } from '../helpers/types.js';
+import { extractJson, extractListItems } from '../helpers/types.js';
 
 describe('Environment tools', () => {
   let environmentId: number | undefined;
@@ -18,7 +18,7 @@ describe('Environment tools', () => {
       name: 'list_environments',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const data = extractJson<Array<{ id: number; name: string }>>(result);
+    const data = extractListItems<{ id: number; name: string }>(result).items;
     expect(Array.isArray(data)).toBe(true);
     if (data.length > 0) {
       // If environments exist, validate structure
@@ -79,7 +79,7 @@ describe('Release tools', () => {
       name: 'list_releases',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const data = extractJson<Array<{ tag_name: string }>>(result);
+    const data = extractListItems<{ tag_name: string }>(result).items;
     expect(data.some((r) => r.tag_name === 'e2e-release-v1.0.0')).toBe(true);
   });
 });

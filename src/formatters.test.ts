@@ -11,11 +11,40 @@ import {
   formatMilestonesResponse,
   formatProtectedBranchesResponse,
   formatUsersResponse,
-  formatGroupsResponse
+  formatGroupsResponse,
+  formatIssuesResponse,
+  formatMergeRequestsResponse,
+  formatNotesResponse,
+  formatDiscussionsResponse,
+  formatEventsResponse,
+  formatCommitsResponse,
+  formatMembersResponse,
+  formatWikiPagesResponse,
+  formatWikiPageResponse,
+  formatWikiAttachmentResponse
 } from './formatters.js';
 
+/**
+ * Helper: parse the single JSON content item AND verify structuredContent
+ * is populated with the identical payload. Both must match - that's the
+ * contract that lets content[]-iterating clients AND structuredContent-
+ * reading clients consume the same data.
+ */
+function parseResponse(response: {
+  content: Array<{ type: string; text: string }>;
+  structuredContent?: { [key: string]: unknown };
+}) {
+  expect(response.content).toHaveLength(1);
+  expect(response.content[0].type).toBe('text');
+  const fromContent = JSON.parse(response.content[0].text);
+  // structuredContent must be present and structurally equal to content[0]
+  expect(response.structuredContent).toBeDefined();
+  expect(response.structuredContent).toEqual(fromContent);
+  return fromContent;
+}
+
 describe('formatPipelinesResponse', () => {
-  it('formats pipelines with summary', () => {
+  it('returns structured JSON with count and items', () => {
     const response = formatPipelinesResponse({
       count: 2,
       items: [
@@ -46,18 +75,16 @@ describe('formatPipelinesResponse', () => {
       ]
     });
 
-    expect(response.content).toHaveLength(2);
-    expect(response.content[0].text).toBe('Found 2 pipelines');
-
-    const items = JSON.parse(response.content[1].text);
-    expect(items).toHaveLength(2);
-    expect(items[0].sha).toBe('abc123de'); // Truncated to 8 chars
-    expect(items[0].status).toBe('success');
+    const data = parseResponse(response);
+    expect(data.count).toBe(2);
+    expect(data.items).toHaveLength(2);
+    expect(data.items[0].sha).toBe('abc123de'); // Truncated to 8 chars
+    expect(data.items[0].status).toBe('success');
   });
 });
 
 describe('formatJobsResponse', () => {
-  it('formats jobs with summary', () => {
+  it('returns structured JSON with count and items', () => {
     const response = formatJobsResponse({
       count: 1,
       items: [
@@ -75,16 +102,15 @@ describe('formatJobsResponse', () => {
       ]
     });
 
-    expect(response.content[0].text).toBe('Found 1 jobs');
-
-    const items = JSON.parse(response.content[1].text);
-    expect(items[0].name).toBe('build-job');
-    expect(items[0].stage).toBe('build');
+    const data = parseResponse(response);
+    expect(data.count).toBe(1);
+    expect(data.items[0].name).toBe('build-job');
+    expect(data.items[0].stage).toBe('build');
   });
 });
 
 describe('formatEnvironmentsResponse', () => {
-  it('formats environments with summary', () => {
+  it('returns structured JSON with count and items', () => {
     const response = formatEnvironmentsResponse({
       count: 2,
       items: [
@@ -103,16 +129,15 @@ describe('formatEnvironmentsResponse', () => {
       ]
     });
 
-    expect(response.content[0].text).toBe('Found 2 environments');
-
-    const items = JSON.parse(response.content[1].text);
-    expect(items[0].name).toBe('production');
-    expect(items[0].state).toBe('available');
+    const data = parseResponse(response);
+    expect(data.count).toBe(2);
+    expect(data.items[0].name).toBe('production');
+    expect(data.items[0].state).toBe('available');
   });
 });
 
 describe('formatBranchesResponse', () => {
-  it('formats branches with summary', () => {
+  it('returns structured JSON with count and items', () => {
     const response = formatBranchesResponse({
       count: 1,
       items: [
@@ -130,16 +155,15 @@ describe('formatBranchesResponse', () => {
       ]
     });
 
-    expect(response.content[0].text).toBe('Found 1 branches');
-
-    const items = JSON.parse(response.content[1].text);
-    expect(items[0].name).toBe('main');
-    expect(items[0].protected).toBe(true);
+    const data = parseResponse(response);
+    expect(data.count).toBe(1);
+    expect(data.items[0].name).toBe('main');
+    expect(data.items[0].protected).toBe(true);
   });
 });
 
 describe('formatTagsResponse', () => {
-  it('formats tags with summary', () => {
+  it('returns structured JSON with count and items', () => {
     const response = formatTagsResponse({
       count: 1,
       items: [
@@ -157,16 +181,15 @@ describe('formatTagsResponse', () => {
       ]
     });
 
-    expect(response.content[0].text).toBe('Found 1 tags');
-
-    const items = JSON.parse(response.content[1].text);
-    expect(items[0].name).toBe('v1.0.0');
-    expect(items[0].message).toBe('Release version 1.0.0');
+    const data = parseResponse(response);
+    expect(data.count).toBe(1);
+    expect(data.items[0].name).toBe('v1.0.0');
+    expect(data.items[0].message).toBe('Release version 1.0.0');
   });
 });
 
 describe('formatTreeResponse', () => {
-  it('formats tree items with summary', () => {
+  it('returns structured JSON with count and items', () => {
     const response = formatTreeResponse({
       count: 3,
       items: [
@@ -176,16 +199,15 @@ describe('formatTreeResponse', () => {
       ]
     });
 
-    expect(response.content[0].text).toBe('Found 3 items');
-
-    const items = JSON.parse(response.content[1].text);
-    expect(items[0].type).toBe('tree');
-    expect(items[1].type).toBe('blob');
+    const data = parseResponse(response);
+    expect(data.count).toBe(3);
+    expect(data.items[0].type).toBe('tree');
+    expect(data.items[1].type).toBe('blob');
   });
 });
 
 describe('formatReleasesResponse', () => {
-  it('formats releases with summary', () => {
+  it('returns structured JSON with count and items', () => {
     const response = formatReleasesResponse({
       count: 1,
       items: [
@@ -198,11 +220,10 @@ describe('formatReleasesResponse', () => {
       ]
     });
 
-    expect(response.content[0].text).toBe('Found 1 releases');
-
-    const items = JSON.parse(response.content[1].text);
-    expect(items[0].tag_name).toBe('v1.0.0');
-    expect(items[0].name).toBe('Version 1.0.0');
+    const data = parseResponse(response);
+    expect(data.count).toBe(1);
+    expect(data.items[0].tag_name).toBe('v1.0.0');
+    expect(data.items[0].name).toBe('Version 1.0.0');
   });
 
   it('truncates long descriptions', () => {
@@ -219,14 +240,14 @@ describe('formatReleasesResponse', () => {
       ]
     });
 
-    const items = JSON.parse(response.content[1].text);
-    expect(items[0].description.length).toBeLessThan(longDescription.length);
-    expect(items[0].description.endsWith('...')).toBe(true);
+    const data = parseResponse(response);
+    expect(data.items[0].description.length).toBeLessThan(longDescription.length);
+    expect(data.items[0].description.endsWith('...')).toBe(true);
   });
 });
 
 describe('formatLabelsResponse', () => {
-  it('formats labels with summary', () => {
+  it('returns structured JSON with count and items', () => {
     const response = formatLabelsResponse({
       count: 2,
       items: [
@@ -245,16 +266,15 @@ describe('formatLabelsResponse', () => {
       ]
     });
 
-    expect(response.content[0].text).toBe('Found 2 labels');
-
-    const items = JSON.parse(response.content[1].text);
-    expect(items[0].name).toBe('bug');
-    expect(items[0].color).toBe('#FF0000');
+    const data = parseResponse(response);
+    expect(data.count).toBe(2);
+    expect(data.items[0].name).toBe('bug');
+    expect(data.items[0].color).toBe('#FF0000');
   });
 });
 
 describe('formatMilestonesResponse', () => {
-  it('formats milestones with summary', () => {
+  it('returns structured JSON with count and items', () => {
     const response = formatMilestonesResponse({
       count: 1,
       items: [
@@ -273,16 +293,15 @@ describe('formatMilestonesResponse', () => {
       ]
     });
 
-    expect(response.content[0].text).toBe('Found 1 milestones');
-
-    const items = JSON.parse(response.content[1].text);
-    expect(items[0].title).toBe('v1.0');
-    expect(items[0].state).toBe('active');
+    const data = parseResponse(response);
+    expect(data.count).toBe(1);
+    expect(data.items[0].title).toBe('v1.0');
+    expect(data.items[0].state).toBe('active');
   });
 });
 
 describe('formatProtectedBranchesResponse', () => {
-  it('formats protected branches with summary', () => {
+  it('returns structured JSON with count and items', () => {
     const response = formatProtectedBranchesResponse({
       count: 1,
       items: [
@@ -296,16 +315,15 @@ describe('formatProtectedBranchesResponse', () => {
       ]
     });
 
-    expect(response.content[0].text).toBe('Found 1 protected branches');
-
-    const items = JSON.parse(response.content[1].text);
-    expect(items[0].name).toBe('main');
-    expect(items[0].push_access_levels).toContain('Maintainers');
+    const data = parseResponse(response);
+    expect(data.count).toBe(1);
+    expect(data.items[0].name).toBe('main');
+    expect(data.items[0].push_access_levels).toContain('Maintainers');
   });
 });
 
 describe('formatUsersResponse', () => {
-  it('formats users with summary', () => {
+  it('returns structured JSON with count and items', () => {
     const response = formatUsersResponse({
       count: 1,
       items: [
@@ -320,16 +338,15 @@ describe('formatUsersResponse', () => {
       ]
     });
 
-    expect(response.content[0].text).toBe('Found 1 users');
-
-    const items = JSON.parse(response.content[1].text);
-    expect(items[0].username).toBe('testuser');
-    expect(items[0].name).toBe('Test User');
+    const data = parseResponse(response);
+    expect(data.count).toBe(1);
+    expect(data.items[0].username).toBe('testuser');
+    expect(data.items[0].name).toBe('Test User');
   });
 });
 
 describe('formatGroupsResponse', () => {
-  it('formats groups with summary', () => {
+  it('returns structured JSON with count and items', () => {
     const response = formatGroupsResponse({
       count: 2,
       items: [
@@ -355,10 +372,101 @@ describe('formatGroupsResponse', () => {
       ]
     });
 
-    expect(response.content[0].text).toBe('Found 2 groups');
+    const data = parseResponse(response);
+    expect(data.count).toBe(2);
+    expect(data.items[0].name).toBe('Group One');
+    expect(data.items[1].parent_id).toBe(1);
+  });
+});
 
-    const items = JSON.parse(response.content[1].text);
-    expect(items[0].name).toBe('Group One');
-    expect(items[1].parent_id).toBe(1);
+describe('formatIssuesResponse', () => {
+  it('returns structured JSON with count and items including all fields', () => {
+    const response = formatIssuesResponse({
+      count: 1,
+      items: [
+        {
+          id: 100,
+          iid: 1,
+          project_id: 42,
+          title: 'Test issue',
+          description: 'A bug description',
+          state: 'opened',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-02T00:00:00Z',
+          closed_at: null,
+          labels: ['bug'],
+          author: { id: 1, name: 'Alice', username: 'alice', avatar_url: '', web_url: '' },
+          assignees: [{ id: 2, name: 'Bob', username: 'bob', avatar_url: '', web_url: '' }],
+          web_url: 'https://gitlab.com/issues/1'
+        }
+      ]
+    });
+
+    const data = parseResponse(response);
+    expect(data.count).toBe(1);
+    expect(data.items[0].iid).toBe(1);
+    expect(data.items[0].title).toBe('Test issue');
+    expect(data.items[0].description).toBe('A bug description');
+    expect(data.items[0].state).toBe('opened');
+    expect(data.items[0].labels).toEqual(['bug']);
+    expect(data.items[0].author.username).toBe('alice');
+    expect(data.items[0].assignees[0].username).toBe('bob');
+  });
+});
+
+describe('formatEventsResponse', () => {
+  it('returns structured JSON with count and items', () => {
+    const response = formatEventsResponse({
+      count: 1,
+      items: [
+        {
+          id: 1,
+          action_name: 'pushed to',
+          author: { id: 1, name: 'Alice', username: 'alice', avatar_url: '', web_url: '' },
+          created_at: '2024-01-01T00:00:00Z',
+          target_type: 'MergeRequest',
+          target_title: 'Fix bug'
+        }
+      ]
+    });
+
+    const data = parseResponse(response);
+    expect(data.count).toBe(1);
+    expect(data.items[0].action).toBe('pushed to');
+    expect(data.items[0].author).toBe('Alice');
+  });
+});
+
+describe('formatWikiPageResponse', () => {
+  it('returns single wiki page as structured JSON', () => {
+    const response = formatWikiPageResponse({
+      slug: 'home',
+      title: 'Home',
+      format: 'markdown',
+      content: '# Welcome',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+      web_url: 'https://gitlab.com/wiki/home'
+    });
+
+    const data = parseResponse(response);
+    expect(data.title).toBe('Home');
+    expect(data.content).toBe('# Welcome');
+  });
+});
+
+describe('formatWikiAttachmentResponse', () => {
+  it('returns attachment info as structured JSON', () => {
+    const response = formatWikiAttachmentResponse({
+      file_name: 'image.png',
+      file_path: 'uploads/image.png',
+      branch: 'main',
+      link: { url: '/uploads/image.png', markdown: '![image](uploads/image.png)' }
+    });
+
+    const data = parseResponse(response);
+    expect(data.file_name).toBe('image.png');
+    expect(data.url).toBe('/uploads/image.png');
+    expect(data.markdown).toContain('image');
   });
 });

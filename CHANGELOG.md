@@ -7,7 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet. New entries land here between releases._
+### Changed (BREAKING)
+
+- **All `list_*` tool responses now use the unified `{count, items}` envelope** in a single MCP content item. Pre-0.10.0 these tools returned a two-content-item shape: `[{type: "text", text: "Found N items"}, {type: "text", text: "[ ...JSON array... ]"}]`. From 0.10.0 they return `[{type: "text", text: "{ \"count\": N, \"items\": [ ... ] }"}]`. The same `{count, items}` payload is also populated on the spec-blessed `structuredContent` field. Affects 20 list-* formatters in `src/formatters.ts` and the `list_pipeline_jobs + include_log_tail` extension in `src/index.ts` (whose data field was renamed from `jobs` to `items` for cross-tool consistency). Fixes #95; closes the gateway-compatibility class of issues for clients like ContextForge that read only `content[0]`. (#96 + maintainer reincarnation)
+- **Single-entity formatters (`formatWikiPageResponse`, `formatWikiAttachmentResponse`)** drop their human-readable prefix (`"Wiki Page: <title>"` / `"Wiki Attachment: <name>"`). Their single content item is now the bare JSON entity object. Equivalent information is carried inside the JSON's `title` / `file_name` fields. (#96)
+
+### Added
+
+- **`structuredContent` field** populated alongside `content[]` on every formatter response. MCP `CallToolResult` schema defines both: `content` for presentational chunks (rendered in transcripts) and `structuredContent` for typed machine-data (consumed by gateways and programmatic integrations). The two surfaces carry identical payloads; spec-conformant clients can consume either. This is the protocol-correct slot for structured tool output, eliminating the prior need for clients to `JSON.parse(content[0].text)` to obtain typed data.
+- **`extractListItems<T>` E2E helper** in `e2e/src/helpers/types.ts`. Shape-aware reader for `{count, items: T[]}` responses with runtime assertion + clearer error messages than the type-erased `extractJson<Array<T>>` pattern it replaces. Used at 37 E2E test sites.
+- **README "Response shape contract" section** documenting the `{count, items}` list envelope, the bare-object single-entity shape, and the `structuredContent` field for future contributors and consumers.
+- **`statusResponse(message, data)` formatter helper** in `src/formatters.ts`. Closes codex P3 on PR #103: the 5 status-message handlers (`delete_project_wiki_page`, `delete_group_wiki_page`, `delete_branch`, `unprotect_branch`, `delete_group`) and the 1 raw-blob handler (`get_job_log`) previously returned `content`-only responses, contradicting the new README contract that promised `structuredContent` on every tool. They now populate `structuredContent` with a typed payload: status handlers emit `{status, resource, ...identifiers}` (e.g. `{status: "deleted", resource: "branch", project_id, branch}`); `get_job_log` adds `{job_id, log, byte_count, line_count}` for clients that need log metadata without re-parsing the blob.
+- **README "Response shape contract" clarification**: explicit note that the `structuredContent` ⊇ `content[]` superset relation is one-directional, with status-tool / raw-blob-tool typed metadata (`status`, `resource`, `job_id`, `byte_count`, `line_count`) called out as exclusive to `structuredContent`. Closes codex P3 round-2 on PR #103 (review on `8616dbf`).
+- **README "Migration from 0.9.x" expansion**: previous note only covered the `list_*` envelope change. Now enumerates all 5 shape-change categories explicitly. Category 1 names 23 affected `list_*` tools exhaustively with `list_group_projects` carved out as an exception (its 0.9.x handler already emitted `JSON.stringify({count, items})` in a single content item via inline return, so only `structuredContent` is new). Category 3 covers all 4 non-`list_*` tools that moved to the envelope: `push_files` (array → envelope), `get_repository_tree` (two-item pair via `formatTreeResponse` → envelope), `get_project_events` (via `formatEventsResponse`), `get_merge_request_commits` (via `formatCommitsResponse`). Category 4 covers the full set of 8 wiki tools that lost their human-readable prefix via `formatWikiPageResponse` / `formatWikiAttachmentResponse` (`get`/`create`/`edit` × `project`/`group` × `wiki_page` + `upload_project_wiki_attachment` + `upload_group_wiki_attachment`). Category 5 covers the unchanged status / raw-blob tools. Also: Single-entity examples in the response-shape section updated to real MCP tool names (`get_pipeline`, `get_project_wiki_page`, `get_group_wiki_page`, `create_issue`, `create_merge_request`) - previously used `get_issue` and `get_wiki_page` which are not exposed in `ALL_TOOLS`. Closes codex P2 on PR #103 (review on `437b046`), codex P2 round-4 on `8e97867`, codex P3 round-5 dual on `102c269`, codex P3 round-6 on `854f0ca`, and codex P3 round-7 on `18d01b6`.
+
+### Migration
+
+For external consumers of any `list_*` tool:
+
+**Recommended path** (read the typed-data channel):
+```ts
+const data = response.structuredContent;  // { count, items: T[] }
+data.items.forEach(...);
+```
+
+**Legacy `content[]` path** (parse the presentational text):
+```ts
+// Before (0.9.x): content[1] held a JSON array, the array WAS the data
+const items = JSON.parse(response.content[1].text);
+
+// After (0.10.0): content[0] holds the {count, items} envelope
+const { items } = JSON.parse(response.content[0].text);
+```
+
+The two paths return different shapes: `structuredContent` is the typed wrapper `{ count, items }`; the legacy-path `.items` accessor returns just the array (preserving your 0.9.x shape exactly). Pick whichever fits your consumer code.
+
+For consumers of `list_pipeline_jobs + include_log_tail`:
+- Replace `data.jobs` with `data.items` (field rename for cross-tool consistency).
 
 ## [0.9.1] - 2026-05-27
 

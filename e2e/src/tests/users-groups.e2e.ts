@@ -16,7 +16,7 @@
  * - update_project
  */
 import { describe, it, expect } from 'vitest';
-import { extractJson, extractText } from '../helpers/types.js';
+import { extractJson, extractListItems, extractText } from '../helpers/types.js';
 
 describe('User tools', () => {
   it('get_current_user — returns root user', async () => {
@@ -33,7 +33,7 @@ describe('User tools', () => {
       name: 'list_users',
       arguments: {},
     });
-    const data = extractJson<Array<{ id: number }>>(result);
+    const data = extractListItems<{ id: number }>(result).items;
     expect(data.length).toBeGreaterThan(0);
   });
 
@@ -55,7 +55,7 @@ describe('Group tools', () => {
       name: 'list_groups',
       arguments: {},
     });
-    const data = extractJson<Array<{ id: number }>>(result);
+    const data = extractListItems<{ id: number }>(result).items;
     expect(data.some((g) => g.id === globalThis.fixtures.groupId)).toBe(true);
   });
 
@@ -88,7 +88,7 @@ describe('Group tools', () => {
       name: 'list_group_subgroups',
       arguments: { group_id: String(globalThis.fixtures.groupId) },
     });
-    const data = extractJson<Array<{ id: number }>>(result);
+    const data = extractListItems<{ id: number }>(result).items;
     expect(data.some((g) => g.id === subgroupId)).toBe(true);
   });
 
@@ -153,7 +153,7 @@ describe('Project tools', () => {
       name: 'get_project_events',
       arguments: { project_id: String(globalThis.fixtures.projectId) },
     });
-    const data = extractJson<Array<{ action_name: string }>>(result);
+    const data = extractListItems<{ action_name: string }>(result).items;
     expect(data.length).toBeGreaterThan(0);
   });
 });
