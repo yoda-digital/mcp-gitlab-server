@@ -30,8 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Renamed** `log_lines` → `log_tail_lines` in `get_pipeline_summary` schema for
   consistency with `list_pipeline_jobs`. (#64 review)
-- **`failure_pattern`** is now a discriminated union (`shared_reason | mixed |
-  no_failures | null`) instead of a plain string. (#64 review)
+- **`failure_pattern`** is now an exhaustive discriminated union
+  (`no_failures | single | shared_reason | mixed | unknown`) instead of a
+  plain string. The `shared_reason` variant carries `unreasoned_count` so
+  callers can tell when some failed jobs lacked a `failure_reason` (vs.
+  every failure sharing the same reason). (#64 review)
 - **Stage status derivation** now mirrors GitLab's aggregation: `allow_failure`
   jobs no longer poison the stage; mixed success+skipped collapses to success.
   (#64 review)
@@ -46,6 +49,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   track and report errors per job instead of empty catch blocks. (#64 review)
 - **E2E tests** — assertions moved outside try/catch so test failures propagate
   correctly; try/catch narrowed to the fetch step only. (#64 review)
+- **`list_pipeline_jobs` (`include_log_tail=true`)** now always emits the
+  unified `{jobs, log_fetch_errors?}` wrapper, including the zero-failed-jobs
+  fallback path that previously reverted to the legacy flat-array shape.
+  (#64 round-3 follow-up)
+- **`get_job_log_smart`** returns `line_count: 0` for an empty log instead of
+  the JS-quirk `1` from `''.split('\n')`. Faithful counts on the
+  section-not-found and `error_only` no-match paths. (#64 round-3 follow-up)
+- **`FailurePattern.single.reason`** normalizes empty-string `failure_reason`
+  to `null` (was passed through verbatim by `??`). Aligns with `.filter(Boolean)`
+  semantics used by the multi-job variants. (#64 round-3 follow-up)
 
 ### Security
 
