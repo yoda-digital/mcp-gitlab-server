@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet. New entries land here between releases._
+### Added
+
+- **`unresolved_only` filter on `list_merge_request_discussions`** — pass `unresolved_only: true` to fetch only threads that still have at least one unresolved resolvable note. Filtering is performed client-side because the GitLab Discussions API has no server-side equivalent.
+- **Resolution metadata on MR discussion notes** — `GitLabNoteSchema` now models `resolved`, `resolved_by`, and `resolved_at`, so the resolution data GitLab returns for resolvable notes is no longer dropped at the Zod boundary.
+- **Per-thread `resolvable` / `resolved` aggregate** in `formatDiscussionsResponse` output, plus an `(N unresolved, M resolved threads)` count appended to the summary line whenever resolvable threads are present. Issue discussions (no resolvable notes) keep the legacy short summary.
+- **Tests** — 10 new vitest cases (96 total, up from 86) covering the new schema fields, formatter aggregation, and summary output.
 
 ## [0.9.0] - 2026-05-27
 

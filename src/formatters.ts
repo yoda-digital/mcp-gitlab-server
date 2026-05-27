@@ -327,26 +327,52 @@ export function formatNotesResponse(notes: GitLabNotesResponse) {
  * @returns A formatted response object for the MCP tool
  */
 export function formatDiscussionsResponse(discussions: GitLabDiscussionsResponse) {
-  // Create a summary of the discussions
-  const summary = `Found ${discussions.count} discussions`;
+  // Compute resolution stats so callers can see at a glance how many threads
+  // are still open. Individual notes (not part of a resolvable thread) are
+  // skipped — only resolvable discussions count toward resolved/unresolved.
+  const resolvableThreads = discussions.items.filter(d =>
+    d.notes.some(n => n.resolvable)
+  );
+  const unresolvedCount = resolvableThreads.filter(d =>
+    d.notes.some(n => n.resolvable && n.resolved === false)
+  ).length;
+  const resolvedCount = resolvableThreads.length - unresolvedCount;
+  const summary = resolvableThreads.length > 0
+    ? `Found ${discussions.count} discussions (${unresolvedCount} unresolved, ${resolvedCount} resolved threads)`
+    : `Found ${discussions.count} discussions`;
 
   // Format the discussions data
-  const formattedDiscussions = discussions.items.map(discussion => ({
-    id: discussion.id,
-    individual_note: discussion.individual_note,
-    notes: discussion.notes.map(note => ({
-      id: note.id,
-      body: note.body,
-      author: {
-        name: note.author.name,
-        username: note.author.username
-      },
-      created_at: note.created_at,
-      updated_at: note.updated_at,
-      system: note.system,
-      type: note.type || (note.system ? "system" : "comment")
-    }))
-  }));
+  const formattedDiscussions = discussions.items.map(discussion => {
+    const resolvable = discussion.notes.some(n => n.resolvable);
+    const resolved = resolvable
+      ? discussion.notes.every(n => !n.resolvable || n.resolved === true)
+      : undefined;
+    return {
+      id: discussion.id,
+      individual_note: discussion.individual_note,
+      resolvable,
+      resolved,
+      notes: discussion.notes.map(note => ({
+        id: note.id,
+        body: note.body,
+        author: {
+          name: note.author.name,
+          username: note.author.username
+        },
+        created_at: note.created_at,
+        updated_at: note.updated_at,
+        system: note.system,
+        type: note.type || (note.system ? "system" : "comment"),
+        resolvable: note.resolvable,
+        resolved: note.resolved,
+        resolved_by: note.resolved_by ? {
+          name: note.resolved_by.name,
+          username: note.resolved_by.username
+        } : undefined,
+        resolved_at: note.resolved_at ?? undefined
+      }))
+    };
+  });
 
   // Return the formatted response
   return {

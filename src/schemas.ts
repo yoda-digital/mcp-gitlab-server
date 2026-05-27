@@ -22,6 +22,9 @@ export const GitLabNoteSchema = z.object({
   noteable_type: z.string(),
   noteable_iid: z.number().optional(),
   resolvable: z.boolean().optional(),
+  resolved: z.boolean().optional(),
+  resolved_by: z.lazy(() => GitLabUserSchema).nullable().optional(),
+  resolved_at: z.string().nullable().optional(),
   confidential: z.boolean().optional(),
   internal: z.boolean().optional(),
   type: z.string().nullable().optional(), // For system notes, indicates the type of change
@@ -750,6 +753,7 @@ export const ListMergeRequestDiscussionsSchema = z.object({
   merge_request_iid: z.number().describe("MR internal ID"),
   page: z.number().optional().describe("Page number (1-indexed)"),
   per_page: z.number().optional().describe("Results per page (1-100)"),
+  unresolved_only: z.boolean().optional().describe("If true, return only discussions that are resolvable and have at least one unresolved note"),
 });
 
 // ============================================================================

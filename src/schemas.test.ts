@@ -33,6 +33,7 @@ import {
   UpdateMergeRequestSchema,
   RebaseMergeRequestSchema,
   CreateMergeRequestDiscussionSchema,
+  ListMergeRequestDiscussionsSchema,
   // Protected Branch Schemas
   ListProtectedBranchesSchema,
   ProtectBranchSchema,
@@ -54,6 +55,7 @@ import {
   // Response Schemas
   GitLabUserSchema,
   GitLabMemberSchema,
+  GitLabNoteSchema,
 } from './schemas.js';
 
 describe('CI/CD Schemas', () => {
@@ -247,6 +249,36 @@ describe('MR Enhancement Schemas', () => {
     });
   });
 
+  describe('ListMergeRequestDiscussionsSchema', () => {
+    it('requires project_id and merge_request_iid', () => {
+      expect(() => ListMergeRequestDiscussionsSchema.parse({ project_id: 'test' })).toThrow();
+      expect(ListMergeRequestDiscussionsSchema.parse({
+        project_id: 'test',
+        merge_request_iid: 1
+      })).toEqual({
+        project_id: 'test',
+        merge_request_iid: 1
+      });
+    });
+
+    it('accepts unresolved_only filter', () => {
+      const valid = ListMergeRequestDiscussionsSchema.parse({
+        project_id: 'test',
+        merge_request_iid: 1,
+        unresolved_only: true
+      });
+      expect(valid.unresolved_only).toBe(true);
+    });
+
+    it('rejects non-boolean unresolved_only', () => {
+      expect(() => ListMergeRequestDiscussionsSchema.parse({
+        project_id: 'test',
+        merge_request_iid: 1,
+        unresolved_only: 'yes'
+      })).toThrow();
+    });
+  });
+
   describe('RebaseMergeRequestSchema', () => {
     it('requires project_id and merge_request_iid', () => {
       expect(RebaseMergeRequestSchema.parse({
@@ -385,6 +417,62 @@ describe('Response schemas — GitLab EE nullability', () => {
         web_url: 'https://gitlab.example.com/lite'
       });
       expect(parsed.avatar_url).toBeUndefined();
+    });
+  });
+
+  describe('GitLabNoteSchema — resolution fields', () => {
+    const baseAuthor = {
+      id: 1,
+      name: 'Reviewer',
+      username: 'rev',
+      avatar_url: null,
+      web_url: 'https://gitlab.example.com/rev'
+    };
+    const baseNote = {
+      id: 100,
+      body: 'Please address this',
+      attachment: null,
+      author: baseAuthor,
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+      system: false,
+      noteable_id: 1,
+      noteable_type: 'MergeRequest',
+    };
+
+    it('parses an unresolved resolvable note', () => {
+      const parsed = GitLabNoteSchema.parse({
+        ...baseNote,
+        resolvable: true,
+        resolved: false,
+        resolved_by: null,
+        resolved_at: null,
+      });
+      expect(parsed.resolvable).toBe(true);
+      expect(parsed.resolved).toBe(false);
+      expect(parsed.resolved_by).toBeNull();
+      expect(parsed.resolved_at).toBeNull();
+    });
+
+    it('parses a resolved note with resolver metadata', () => {
+      const parsed = GitLabNoteSchema.parse({
+        ...baseNote,
+        resolvable: true,
+        resolved: true,
+        resolved_by: { ...baseAuthor, id: 2, username: 'maintainer', name: 'Maintainer' },
+        resolved_at: '2024-01-02T10:00:00Z',
+      });
+      expect(parsed.resolved).toBe(true);
+      expect(parsed.resolved_by?.username).toBe('maintainer');
+      expect(parsed.resolved_at).toBe('2024-01-02T10:00:00Z');
+    });
+
+    it('parses a note where resolution fields are omitted (issue notes)', () => {
+      const parsed = GitLabNoteSchema.parse(baseNote);
+      expect(parsed.resolvable).toBeUndefined();
+      expect(parsed.resolved).toBeUndefined();
+      expect(parsed.resolved_by).toBeUndefined();
+      expect(parsed.resolved_at).toBeUndefined();
     });
   });
 

@@ -429,7 +429,7 @@ const ALL_TOOLS = [
   },
   {
     name: "list_merge_request_discussions",
-    description: "List all discussions (threaded comments) on a merge request",
+    description: "List discussions (threaded comments) on a merge request. Pass unresolved_only=true to filter to threads that still have at least one unresolved note.",
     inputSchema: createJsonSchema(ListMergeRequestDiscussionsSchema),
     readOnly: true
   },
@@ -1335,6 +1335,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
             per_page: args.per_page
           }
         );
+
+        if (args.unresolved_only) {
+          const filteredItems = discussions.items.filter(d =>
+            d.notes.some(n => n.resolvable && n.resolved === false)
+          );
+          return formatDiscussionsResponse({
+            count: filteredItems.length,
+            items: filteredItems
+          });
+        }
 
         return formatDiscussionsResponse(discussions);
       }

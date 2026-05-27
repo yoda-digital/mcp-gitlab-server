@@ -11,7 +11,8 @@ import {
   formatMilestonesResponse,
   formatProtectedBranchesResponse,
   formatUsersResponse,
-  formatGroupsResponse
+  formatGroupsResponse,
+  formatDiscussionsResponse
 } from './formatters.js';
 
 describe('formatPipelinesResponse', () => {
@@ -325,6 +326,160 @@ describe('formatUsersResponse', () => {
     const items = JSON.parse(response.content[1].text);
     expect(items[0].username).toBe('testuser');
     expect(items[0].name).toBe('Test User');
+  });
+});
+
+describe('formatDiscussionsResponse', () => {
+  const author = {
+    id: 1,
+    name: 'Reviewer',
+    username: 'rev',
+    avatar_url: null,
+    web_url: 'https://gitlab.example.com/rev'
+  };
+  const resolver = {
+    id: 2,
+    name: 'Maintainer',
+    username: 'maint',
+    avatar_url: null,
+    web_url: 'https://gitlab.example.com/maint'
+  };
+  const baseNote = {
+    attachment: null,
+    author,
+    system: false,
+    noteable_id: 1,
+    noteable_type: 'MergeRequest',
+  };
+
+  it('formats discussions and exposes per-note resolution fields', () => {
+    const response = formatDiscussionsResponse({
+      count: 1,
+      items: [
+        {
+          id: 'd1',
+          individual_note: false,
+          notes: [
+            {
+              ...baseNote,
+              id: 10,
+              body: 'Please rename this',
+              created_at: '2024-01-01T00:00:00Z',
+              updated_at: '2024-01-01T00:00:00Z',
+              resolvable: true,
+              resolved: true,
+              resolved_by: resolver,
+              resolved_at: '2024-01-02T00:00:00Z',
+            }
+          ]
+        }
+      ]
+    });
+
+    const items = JSON.parse(response.content[1].text);
+    expect(items[0].resolvable).toBe(true);
+    expect(items[0].resolved).toBe(true);
+    expect(items[0].notes[0].resolved).toBe(true);
+    expect(items[0].notes[0].resolved_by).toEqual({ name: 'Maintainer', username: 'maint' });
+    expect(items[0].notes[0].resolved_at).toBe('2024-01-02T00:00:00Z');
+  });
+
+  it('aggregates thread.resolved=false when any resolvable note is unresolved', () => {
+    const response = formatDiscussionsResponse({
+      count: 1,
+      items: [
+        {
+          id: 'd1',
+          individual_note: false,
+          notes: [
+            {
+              ...baseNote,
+              id: 10,
+              body: 'first',
+              created_at: '2024-01-01T00:00:00Z',
+              updated_at: '2024-01-01T00:00:00Z',
+              resolvable: true,
+              resolved: true,
+              resolved_by: resolver,
+              resolved_at: '2024-01-02T00:00:00Z',
+            },
+            {
+              ...baseNote,
+              id: 11,
+              body: 'reply',
+              created_at: '2024-01-03T00:00:00Z',
+              updated_at: '2024-01-03T00:00:00Z',
+              resolvable: true,
+              resolved: false,
+              resolved_by: null,
+              resolved_at: null,
+            }
+          ]
+        }
+      ]
+    });
+
+    const items = JSON.parse(response.content[1].text);
+    expect(items[0].resolvable).toBe(true);
+    expect(items[0].resolved).toBe(false);
+  });
+
+  it('reports unresolved/resolved counts in the summary', () => {
+    const response = formatDiscussionsResponse({
+      count: 3,
+      items: [
+        {
+          id: 'd1',
+          individual_note: false,
+          notes: [{
+            ...baseNote, id: 10, body: 'open', created_at: 't', updated_at: 't',
+            resolvable: true, resolved: false, resolved_by: null, resolved_at: null,
+          }]
+        },
+        {
+          id: 'd2',
+          individual_note: false,
+          notes: [{
+            ...baseNote, id: 11, body: 'done', created_at: 't', updated_at: 't',
+            resolvable: true, resolved: true, resolved_by: resolver, resolved_at: 't',
+          }]
+        },
+        {
+          id: 'd3',
+          individual_note: true,
+          notes: [{
+            ...baseNote, id: 12, body: 'plain', created_at: 't', updated_at: 't',
+          }]
+        }
+      ]
+    });
+
+    expect(response.content[0].text).toBe('Found 3 discussions (1 unresolved, 1 resolved threads)');
+  });
+
+  it('omits resolved aggregate on individual_note discussions (no resolvable notes)', () => {
+    const response = formatDiscussionsResponse({
+      count: 1,
+      items: [
+        {
+          id: 'd1',
+          individual_note: true,
+          notes: [{
+            ...baseNote,
+            id: 10,
+            body: 'just a comment',
+            created_at: 't',
+            updated_at: 't',
+          }]
+        }
+      ]
+    });
+
+    const items = JSON.parse(response.content[1].text);
+    expect(items[0].resolvable).toBe(false);
+    expect(items[0].resolved).toBeUndefined();
+    // Without any resolvable threads, the summary stays the legacy short form.
+    expect(response.content[0].text).toBe('Found 1 discussions');
   });
 });
 
