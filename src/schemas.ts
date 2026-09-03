@@ -229,7 +229,8 @@ export const GitLabIssueSchema = z.object({
   milestone: z.object({
     id: z.number(),
     iid: z.number(),
-    project_id: z.number(),
+    project_id: z.number().optional(),
+    group_id: z.number().optional(),
     title: z.string(),
     description: z.string().nullable(),
     state: z.string(),

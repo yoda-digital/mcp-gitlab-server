@@ -54,6 +54,8 @@ import {
   // Response Schemas
   GitLabUserSchema,
   GitLabMemberSchema,
+  GitLabIssueSchema,
+  GitLabIssuesResponseSchema,
 } from './schemas.js';
 
 describe('CI/CD Schemas', () => {
@@ -453,5 +455,63 @@ describe('Response schemas — GitLab EE nullability', () => {
       });
       expect(result.success).toBe(true);
     });
+  });
+});
+
+
+describe("GitLabIssueSchema group milestones (#120)", () => {
+  const baseIssue = {
+    id: 1,
+    iid: 10,
+    project_id: 42,
+    title: "Issue with group milestone",
+    description: null,
+    state: "opened",
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+    closed_at: null,
+    labels: [],
+    assignees: [],
+    author: {
+      id: 1,
+      username: "user",
+      name: "User",
+      avatar_url: null,
+      web_url: "https://gitlab.example/user",
+    },
+    web_url: "https://gitlab.example/p/-/issues/10",
+  };
+
+  const groupMilestone = {
+    id: 99,
+    iid: 3,
+    group_id: 7,
+    title: "Group milestone",
+    description: null,
+    state: "active",
+    created_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-01T00:00:00.000Z",
+    due_date: null,
+    start_date: null,
+    web_url: "https://gitlab.example/groups/g/-/milestones/3",
+  };
+
+  it("accepts an issue whose milestone has group_id and no project_id", () => {
+    const payload = { ...baseIssue, milestone: groupMilestone };
+    const result = GitLabIssueSchema.safeParse(payload);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.milestone?.group_id).toBe(7);
+      expect(result.data.milestone?.project_id).toBeUndefined();
+    }
+  });
+
+  it("accepts group-milestone issues in GitLabIssuesResponseSchema", () => {
+    const payload = {
+      count: 1,
+      items: [{ ...baseIssue, milestone: groupMilestone }],
+    };
+    const result = GitLabIssuesResponseSchema.safeParse(payload);
+    expect(result.success).toBe(true);
   });
 });
