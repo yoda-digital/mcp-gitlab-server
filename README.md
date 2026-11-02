@@ -126,9 +126,9 @@ Read-only mode (`GITLAB_READ_ONLY_MODE=true`) filters every mutating tool out at
 |---|---|---|
 | stdio | Local clients (Claude Desktop, Cursor, Zed). The default. | _(default)_ |
 | SSE | Remote clients still on the legacy SSE spec. | `USE_SSE=true` |
-| Streamable HTTP | Remote clients on the current MCP Streamable HTTP spec. | `USE_STREAMABLE_HTTP=true` |
+| Streamable HTTP (sessionful, 2025-era) | Remote clients using the sessionful Streamable HTTP revision. | `USE_STREAMABLE_HTTP=true` |
 
-Streamable HTTP runs `POST /mcp`, `GET /mcp`, and `DELETE /mcp`, with session management via the `MCP-Session-Id` header. The `/healthz` endpoint returns 503 when active sessions exceed `HEALTHZ_MAX_SESSIONS`, intended for Kubernetes liveness and readiness probes.
+This implementation uses the 2025-era sessionful Streamable HTTP wire format: `POST /mcp`, `GET /mcp`, and `DELETE /mcp`, with session management via `MCP-Session-Id`. The [MCP 2026-07-28 revision](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http) removed protocol-level sessions and the standalone `GET`/`DELETE` endpoints. Clients using that newer revision need a compatible server transport; this implementation should not be assumed to support it. The `/healthz` endpoint returns 503 when active sessions exceed `HEALTHZ_MAX_SESSIONS`, intended for Kubernetes liveness and readiness probes.
 
 ---
 
